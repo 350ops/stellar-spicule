@@ -144,13 +144,17 @@ function CenterMap({ center, zoom }: { center: [number, number] | null; zoom?: n
     return null;
 }
 
-// Extract unique days from pins
+// Extract unique days from pins (sorted numerically)
 function extractDays(pins: MapPin[]): string[] {
     const days = new Set<string>();
     pins.forEach(p => {
         if (p.day) days.add(p.day);
     });
-    return Array.from(days).sort();
+    return Array.from(days).sort((a, b) => {
+        const dayA = parseInt(a.replace(/\D/g, '')) || 0;
+        const dayB = parseInt(b.replace(/\D/g, '')) || 0;
+        return dayA - dayB;
+    });
 }
 
 export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = true }: TripMapProps) {
@@ -200,16 +204,22 @@ export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = t
         });
     }, [pins, typeFilters, dayFilter]);
 
+    // Sort filtered pins by day for route display
+    const sortedFilteredPins = React.useMemo(() => {
+        return [...filteredPins].sort((a, b) => {
+            const dayA = a.day ? parseInt(a.day.replace(/\D/g, '')) : 999;
+            const dayB = b.day ? parseInt(b.day.replace(/\D/g, '')) : 999;
+            if (dayA !== dayB) return dayA - dayB;
+            // Secondary sort by id for stable ordering within same day
+            return a.id - b.id;
+        });
+    }, [filteredPins]);
+
     // Generate route polyline points (sorted by day)
     const routePoints = React.useMemo(() => {
         if (!showRoute) return [];
-        const sortedPins = [...filteredPins].sort((a, b) => {
-            const dayA = a.day ? parseInt(a.day.replace(/\D/g, '')) : 999;
-            const dayB = b.day ? parseInt(b.day.replace(/\D/g, '')) : 999;
-            return dayA - dayB;
-        });
-        return sortedPins.map(p => [p.lat, p.lng] as [number, number]);
-    }, [filteredPins, showRoute]);
+        return sortedFilteredPins.map(p => [p.lat, p.lng] as [number, number]);
+    }, [sortedFilteredPins, showRoute]);
 
     // Default center on Japan
     const defaultCenter: [number, number] = [35.6762, 139.6503];
@@ -532,8 +542,8 @@ export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = t
                     />
                 )}
 
-                {/* Existing Pins */}
-                {filteredPins.map((pin, idx) => (
+                {/* Existing Pins - use sorted pins when showing route for correct numbering */}
+                {(showRoute && routePoints.length > 1 ? sortedFilteredPins : filteredPins).map((pin, idx) => (
                     <Marker
                         key={pin.id}
                         position={[pin.lat, pin.lng]}
