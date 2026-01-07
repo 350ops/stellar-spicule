@@ -44,12 +44,42 @@ export function MapTab() {
 // Export the new CalendarTab from its own file
 export { CalendarTab } from "./CalendarTab";
 
-// Export the new NotesTab from its own file
-// Note: This is a wrapper that uses default data - full implementation in NotesTab.tsx
-export { NotesTab } from "./NotesTab";
+// Wrapper for NotesTab that provides default props
+import { NotesTab as NotesTabImpl } from "./NotesTab";
+export function NotesTab() {
+    return (
+        <NotesTabImpl
+            tripId="demo-trip"
+            notes={[]}
+            onAddNote={async (note) => console.log("Add note:", note)}
+            onUpdateNote={async (id, updates) => console.log("Update note:", id, updates)}
+            onDeleteNote={async (id) => console.log("Delete note:", id)}
+        />
+    );
+}
 
-// Export the new BudgetTab from its own file
-export { BudgetTab } from "./BudgetTab";
+// Wrapper for BudgetTab that provides default props
+import { BudgetTab as BudgetTabImpl } from "./BudgetTab";
+export function BudgetTab() {
+    return (
+        <BudgetTabImpl
+            tripId="demo-trip"
+            expenses={[]}
+            onAddExpense={async (expense) => console.log("Add expense:", expense)}
+            onDeleteExpense={async (id) => console.log("Delete expense:", id)}
+        />
+    );
+}
 
-// Export the new FilesTab from its own file
-export { FilesTab } from "./FilesTab";
+// Wrapper for FilesTab that provides default props
+import { FilesTab as FilesTabImpl } from "./FilesTab";
+export function FilesTab() {
+    return (
+        <FilesTabImpl
+            tripId="demo-trip"
+            files={[]}
+            onAddFile={async (file, data) => console.log("Add file:", file, data)}
+            onDeleteFile={async (id) => console.log("Delete file:", id)}
+        />
+    );
+}

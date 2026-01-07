@@ -19,7 +19,7 @@ interface CalendarEvent {
 
 export function CalendarTab() {
   const { itinerary } = useItinerary();
-  const { setDetailViewItem } = useUIState();
+  const { setSelectedItineraryItem } = useUIState();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -32,7 +32,7 @@ export function CalendarTab() {
         try {
           const date = parseISO(day.date);
           calendarEvents.push({
-            id: item.id,
+            id: String(item.id),
             title: item.title,
             time: item.time,
             type: item.type,
@@ -175,9 +175,9 @@ export function CalendarTab() {
                           )}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setDetailViewItem(itinerary
+                            setSelectedItineraryItem(itinerary
                               .flatMap(d => d.items)
-                              .find(i => i.id === event.id) || null
+                              .find(i => String(i.id) === event.id) || null
                             );
                           }}
                         >
@@ -227,8 +227,8 @@ export function CalendarTab() {
                       onClick={() => {
                         const item = itinerary
                           .flatMap(d => d.items)
-                          .find(i => i.id === event.id);
-                        if (item) setDetailViewItem(item);
+                          .find(i => String(i.id) === event.id);
+                        if (item) setSelectedItineraryItem(item);
                       }}
                       className="w-full text-left p-3 rounded-lg border hover:border-primary/50 hover:bg-muted/50 transition-colors"
                     >
