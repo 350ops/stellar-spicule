@@ -97,7 +97,7 @@ export interface ActivityItem {
 }
 
 export interface MapPin {
-    id: number;
+    id: string;
     name: string;
     location: string;
     lat: number;
@@ -105,7 +105,7 @@ export interface MapPin {
     type: string;
     day?: string;
     notes?: string;
-    linkedItemId?: number; // Link to itinerary item if auto-generated
+    linkedItemId?: string; // Link to itinerary item if auto-generated
 }
 
 export interface Workspace {
@@ -181,8 +181,8 @@ interface AppActions {
 
     // Map Pin Actions
     addMapPin: (pin: Omit<MapPin, "id">) => void;
-    updateMapPin: (id: number, updates: Partial<MapPin>) => void;
-    deleteMapPin: (id: number) => void;
+    updateMapPin: (id: string, updates: Partial<MapPin>) => void;
+    deleteMapPin: (id: string) => void;
 }
 
 type AppStore = AppState & AppActions;
@@ -376,67 +376,67 @@ const initialActivities: ActivityItem[] = [
 
 const initialMapPins: MapPin[] = [
     // Day 1: Arrive Osaka (Jan 18)
-    { id: 1, name: "Kansai International Airport", location: "Osaka, Japan", lat: 34.4320, lng: 135.2304, type: "Arrival", day: "Day 1", notes: "Arrival 11:30 AM. Pick up Pocket WiFi & ICOCA cards." },
-    { id: 2, name: "The St. Regis Osaka", location: "Midosuji, Osaka", lat: 34.6846, lng: 135.4993, type: "Hotel", day: "Day 1-2", notes: "Grand Deluxe Room, 20th floor. 2 nights. Butler service." },
-    { id: 3, name: "Shinsaibashi Shopping Street", location: "Shinsaibashi, Osaka", lat: 34.6755, lng: 135.5022, type: "Sightseeing", day: "Day 1", notes: "Premier shopping arcade. Amerikamura nearby." },
-    { id: 4, name: "Dotonbori", location: "Dotonbori, Osaka", lat: 34.6687, lng: 135.5030, type: "Food", day: "Day 1", notes: "Iconic food street! Takoyaki, okonomiyaki, gyoza." },
+    { id: "pin-1", name: "Kansai International Airport", location: "Osaka, Japan", lat: 34.4320, lng: 135.2304, type: "Arrival", day: "Day 1", notes: "Arrival 11:30 AM. Pick up Pocket WiFi & ICOCA cards." },
+    { id: "pin-2", name: "The St. Regis Osaka", location: "Midosuji, Osaka", lat: 34.6846, lng: 135.4993, type: "Hotel", day: "Day 1-2", notes: "Grand Deluxe Room, 20th floor. 2 nights. Butler service." },
+    { id: "pin-3", name: "Shinsaibashi Shopping Street", location: "Shinsaibashi, Osaka", lat: 34.6755, lng: 135.5022, type: "Sightseeing", day: "Day 1", notes: "Premier shopping arcade. Amerikamura nearby." },
+    { id: "pin-4", name: "Dotonbori", location: "Dotonbori, Osaka", lat: 34.6687, lng: 135.5030, type: "Food", day: "Day 1", notes: "Iconic food street! Takoyaki, okonomiyaki, gyoza." },
     
     // Day 2: Osaka (Jan 19)
-    { id: 5, name: "Osaka Castle", location: "Chuo-ku, Osaka", lat: 34.6873, lng: 135.5259, type: "Sightseeing", day: "Day 2", notes: "Historic castle. ¥600 entry. Great views from 8th floor." },
-    { id: 6, name: "Kuromon Market", location: "Nipponbashi, Osaka", lat: 34.6627, lng: 135.5062, type: "Food", day: "Day 2", notes: "Osaka's Kitchen - fresh seafood, wagyu, uni!" },
-    { id: 7, name: "Shinsekai District", location: "Shinsekai, Osaka", lat: 34.6523, lng: 135.5063, type: "Sightseeing", day: "Day 2", notes: "Retro area with Tsutenkaku Tower. Try kushikatsu!" },
-    { id: 8, name: "Spa World", location: "Shinsekai, Osaka", lat: 34.6517, lng: 135.5056, type: "Activity", day: "Day 2", notes: "Huge onsen theme park. ¥1,500 entry." },
-    { id: 9, name: "Ajinoya", location: "Namba, Osaka", lat: 34.6660, lng: 135.5010, type: "Food", day: "Day 2", notes: "Best okonomiyaki since 1965. Cash only." },
+    { id: "pin-5", name: "Osaka Castle", location: "Chuo-ku, Osaka", lat: 34.6873, lng: 135.5259, type: "Sightseeing", day: "Day 2", notes: "Historic castle. ¥600 entry. Great views from 8th floor." },
+    { id: "pin-6", name: "Kuromon Market", location: "Nipponbashi, Osaka", lat: 34.6627, lng: 135.5062, type: "Food", day: "Day 2", notes: "Osaka's Kitchen - fresh seafood, wagyu, uni!" },
+    { id: "pin-7", name: "Shinsekai District", location: "Shinsekai, Osaka", lat: 34.6523, lng: 135.5063, type: "Sightseeing", day: "Day 2", notes: "Retro area with Tsutenkaku Tower. Try kushikatsu!" },
+    { id: "pin-8", name: "Spa World", location: "Shinsekai, Osaka", lat: 34.6517, lng: 135.5056, type: "Activity", day: "Day 2", notes: "Huge onsen theme park. ¥1,500 entry." },
+    { id: "pin-9", name: "Ajinoya", location: "Namba, Osaka", lat: 34.6660, lng: 135.5010, type: "Food", day: "Day 2", notes: "Best okonomiyaki since 1965. Cash only." },
     
     // Day 3: Osaka → Kyoto (Jan 20)
-    { id: 10, name: "The Machiya Residence", location: "Gion, Kyoto", lat: 35.0037, lng: 135.7780, type: "Airbnb", day: "Day 3-5", notes: "100-year-old renovated townhouse. 3 nights." },
-    { id: 11, name: "Gion Nanba", location: "Gion, Kyoto", lat: 35.0040, lng: 135.7755, type: "Food", day: "Day 3", notes: "Famous soba in traditional townhouse." },
-    { id: 12, name: "Gion District", location: "Gion, Kyoto", lat: 35.0045, lng: 135.7760, type: "Sightseeing", day: "Day 3", notes: "Geisha district. Walk Hanamikoji Street at dusk." },
-    { id: 13, name: "Yasaka Shrine", location: "Gion, Kyoto", lat: 35.0036, lng: 135.7785, type: "Sightseeing", day: "Day 3", notes: "Beautiful shrine at end of Shijo street. Free entry." },
-    { id: 14, name: "Gion Karyo", location: "Gion, Kyoto", lat: 35.0048, lng: 135.7765, type: "Food", day: "Day 3", notes: "Kaiseki dinner. Private tatami room." },
+    { id: "pin-10", name: "The Machiya Residence", location: "Gion, Kyoto", lat: 35.0037, lng: 135.7780, type: "Airbnb", day: "Day 3-5", notes: "100-year-old renovated townhouse. 3 nights." },
+    { id: "pin-11", name: "Gion Nanba", location: "Gion, Kyoto", lat: 35.0040, lng: 135.7755, type: "Food", day: "Day 3", notes: "Famous soba in traditional townhouse." },
+    { id: "pin-12", name: "Gion District", location: "Gion, Kyoto", lat: 35.0045, lng: 135.7760, type: "Sightseeing", day: "Day 3", notes: "Geisha district. Walk Hanamikoji Street at dusk." },
+    { id: "pin-13", name: "Yasaka Shrine", location: "Gion, Kyoto", lat: 35.0036, lng: 135.7785, type: "Sightseeing", day: "Day 3", notes: "Beautiful shrine at end of Shijo street. Free entry." },
+    { id: "pin-14", name: "Gion Karyo", location: "Gion, Kyoto", lat: 35.0048, lng: 135.7765, type: "Food", day: "Day 3", notes: "Kaiseki dinner. Private tatami room." },
     
     // Day 4: Kyoto Temples & Bamboo (Jan 21)
-    { id: 15, name: "Fushimi Inari Shrine", location: "Fushimi, Kyoto", lat: 34.9671, lng: 135.7727, type: "Sightseeing", day: "Day 4", notes: "10,000 torii gates. Go at sunrise!" },
-    { id: 16, name: "Vermillion Cafe", location: "Near Fushimi Inari", lat: 34.9680, lng: 135.7720, type: "Food", day: "Day 4", notes: "Cute cafe with Inari views. Japanese breakfast." },
-    { id: 17, name: "Kinkaku-ji Golden Pavilion", location: "Kita, Kyoto", lat: 35.0394, lng: 135.7292, type: "Sightseeing", day: "Day 4", notes: "Iconic gold-leaf temple. ¥500 entry." },
-    { id: 18, name: "Shoraian", location: "Arashiyama, Kyoto", lat: 35.0130, lng: 135.6740, type: "Food", day: "Day 4", notes: "Riverside tofu restaurant. Beautiful views." },
-    { id: 19, name: "Arashiyama Bamboo Grove", location: "Arashiyama, Kyoto", lat: 35.0168, lng: 135.6713, type: "Sightseeing", day: "Day 4", notes: "Magical bamboo forest path." },
-    { id: 20, name: "Monkey Park Iwatayama", location: "Arashiyama, Kyoto", lat: 35.0098, lng: 135.6785, type: "Activity", day: "Day 4", notes: "Wild Japanese macaques. Great city views." },
-    { id: 21, name: "Pontocho Alley", location: "Pontocho, Kyoto", lat: 35.0060, lng: 135.7700, type: "Food", day: "Day 4", notes: "Atmospheric alley along Kamo River." },
+    { id: "pin-15", name: "Fushimi Inari Shrine", location: "Fushimi, Kyoto", lat: 34.9671, lng: 135.7727, type: "Sightseeing", day: "Day 4", notes: "10,000 torii gates. Go at sunrise!" },
+    { id: "pin-16", name: "Vermillion Cafe", location: "Near Fushimi Inari", lat: 34.9680, lng: 135.7720, type: "Food", day: "Day 4", notes: "Cute cafe with Inari views. Japanese breakfast." },
+    { id: "pin-17", name: "Kinkaku-ji Golden Pavilion", location: "Kita, Kyoto", lat: 35.0394, lng: 135.7292, type: "Sightseeing", day: "Day 4", notes: "Iconic gold-leaf temple. ¥500 entry." },
+    { id: "pin-18", name: "Shoraian", location: "Arashiyama, Kyoto", lat: 35.0130, lng: 135.6740, type: "Food", day: "Day 4", notes: "Riverside tofu restaurant. Beautiful views." },
+    { id: "pin-19", name: "Arashiyama Bamboo Grove", location: "Arashiyama, Kyoto", lat: 35.0168, lng: 135.6713, type: "Sightseeing", day: "Day 4", notes: "Magical bamboo forest path." },
+    { id: "pin-20", name: "Monkey Park Iwatayama", location: "Arashiyama, Kyoto", lat: 35.0098, lng: 135.6785, type: "Activity", day: "Day 4", notes: "Wild Japanese macaques. Great city views." },
+    { id: "pin-21", name: "Pontocho Alley", location: "Pontocho, Kyoto", lat: 35.0060, lng: 135.7700, type: "Food", day: "Day 4", notes: "Atmospheric alley along Kamo River." },
     
     // Day 5: Nara Day Trip (Jan 22)
-    { id: 22, name: "Nara Park", location: "Nara, Japan", lat: 34.6851, lng: 135.8430, type: "Sightseeing", day: "Day 5", notes: "1,200 friendly deer! Buy crackers for ¥200." },
-    { id: 23, name: "Todai-ji Temple", location: "Nara, Japan", lat: 34.6890, lng: 135.8398, type: "Sightseeing", day: "Day 5", notes: "World's largest bronze Buddha. ¥600 entry." },
-    { id: 24, name: "Kasuga Grand Shrine", location: "Nara, Japan", lat: 34.6822, lng: 135.8478, type: "Sightseeing", day: "Day 5", notes: "Ancient shrine with hundreds of lanterns." },
-    { id: 25, name: "Nishiki Market", location: "Kyoto", lat: 35.0050, lng: 135.7650, type: "Food", day: "Day 5", notes: "Kyoto's Kitchen. Matcha desserts, street food." },
+    { id: "pin-22", name: "Nara Park", location: "Nara, Japan", lat: 34.6851, lng: 135.8430, type: "Sightseeing", day: "Day 5", notes: "1,200 friendly deer! Buy crackers for ¥200." },
+    { id: "pin-23", name: "Todai-ji Temple", location: "Nara, Japan", lat: 34.6890, lng: 135.8398, type: "Sightseeing", day: "Day 5", notes: "World's largest bronze Buddha. ¥600 entry." },
+    { id: "pin-24", name: "Kasuga Grand Shrine", location: "Nara, Japan", lat: 34.6822, lng: 135.8478, type: "Sightseeing", day: "Day 5", notes: "Ancient shrine with hundreds of lanterns." },
+    { id: "pin-25", name: "Nishiki Market", location: "Kyoto", lat: 35.0050, lng: 135.7650, type: "Food", day: "Day 5", notes: "Kyoto's Kitchen. Matcha desserts, street food." },
     
     // Day 6: Kyoto → Tokyo (Jan 23)
-    { id: 26, name: "En Teahouse", location: "Gion, Kyoto", lat: 35.0042, lng: 135.7752, type: "Activity", day: "Day 6", notes: "Traditional tea ceremony experience." },
-    { id: 27, name: "Kiyomizu-dera Temple", location: "Higashiyama, Kyoto", lat: 34.9949, lng: 135.7850, type: "Sightseeing", day: "Day 6", notes: "Famous wooden terrace temple. ¥400 entry." },
-    { id: 28, name: "Kyoto Station", location: "Kyoto, Japan", lat: 34.9858, lng: 135.7587, type: "Train", day: "Day 6", notes: "Shinkansen to Tokyo. 2h 15m." },
-    { id: 29, name: "Park Hyatt Tokyo", location: "Shinjuku, Tokyo", lat: 35.6855, lng: 139.6906, type: "Hotel", day: "Day 6-8", notes: "52nd floor Park Suite. Lost in Translation hotel. 3 nights." },
-    { id: 30, name: "Omoide Yokocho", location: "Shinjuku, Tokyo", lat: 35.6938, lng: 139.6997, type: "Food", day: "Day 6", notes: "Memory Lane yakitori. Cash only!" },
+    { id: "pin-26", name: "En Teahouse", location: "Gion, Kyoto", lat: 35.0042, lng: 135.7752, type: "Activity", day: "Day 6", notes: "Traditional tea ceremony experience." },
+    { id: "pin-27", name: "Kiyomizu-dera Temple", location: "Higashiyama, Kyoto", lat: 34.9949, lng: 135.7850, type: "Sightseeing", day: "Day 6", notes: "Famous wooden terrace temple. ¥400 entry." },
+    { id: "pin-28", name: "Kyoto Station", location: "Kyoto, Japan", lat: 34.9858, lng: 135.7587, type: "Train", day: "Day 6", notes: "Shinkansen to Tokyo. 2h 15m." },
+    { id: "pin-29", name: "Park Hyatt Tokyo", location: "Shinjuku, Tokyo", lat: 35.6855, lng: 139.6906, type: "Hotel", day: "Day 6-8", notes: "52nd floor Park Suite. Lost in Translation hotel. 3 nights." },
+    { id: "pin-30", name: "Omoide Yokocho", location: "Shinjuku, Tokyo", lat: 35.6938, lng: 139.6997, type: "Food", day: "Day 6", notes: "Memory Lane yakitori. Cash only!" },
     
     // Day 7: Tokyo Shibuya & Harajuku (Jan 24)
-    { id: 31, name: "New York Grill", location: "Park Hyatt, 52F", lat: 35.6855, lng: 139.6906, type: "Food", day: "Day 7", notes: "Breakfast with city views. Globalist benefit." },
-    { id: 32, name: "Meiji Shrine", location: "Harajuku, Tokyo", lat: 35.6764, lng: 139.6993, type: "Sightseeing", day: "Day 7", notes: "Peaceful Shinto shrine in forest. Free entry." },
-    { id: 33, name: "Takeshita Street", location: "Harajuku, Tokyo", lat: 35.6702, lng: 139.7027, type: "Sightseeing", day: "Day 7", notes: "Kawaii fashion street. Rainbow cotton candy!" },
-    { id: 34, name: "Afuri Ramen", location: "Harajuku, Tokyo", lat: 35.6695, lng: 139.7050, type: "Food", day: "Day 7", notes: "Famous yuzu shio ramen." },
-    { id: 35, name: "Shibuya Crossing", location: "Shibuya, Tokyo", lat: 35.6595, lng: 139.7004, type: "Sightseeing", day: "Day 7", notes: "World's busiest intersection!" },
-    { id: 36, name: "Shibuya Sky", location: "Shibuya, Tokyo", lat: 35.6580, lng: 139.7016, type: "Activity", day: "Day 7", notes: "360° rooftop views. Sunset time slot booked." },
-    { id: 37, name: "Uobei Sushi", location: "Shibuya, Tokyo", lat: 35.6590, lng: 139.7000, type: "Food", day: "Day 7", notes: "Conveyor belt sushi. Bullet train delivery!" },
+    { id: "pin-31", name: "New York Grill", location: "Park Hyatt, 52F", lat: 35.6855, lng: 139.6906, type: "Food", day: "Day 7", notes: "Breakfast with city views. Globalist benefit." },
+    { id: "pin-32", name: "Meiji Shrine", location: "Harajuku, Tokyo", lat: 35.6764, lng: 139.6993, type: "Sightseeing", day: "Day 7", notes: "Peaceful Shinto shrine in forest. Free entry." },
+    { id: "pin-33", name: "Takeshita Street", location: "Harajuku, Tokyo", lat: 35.6702, lng: 139.7027, type: "Sightseeing", day: "Day 7", notes: "Kawaii fashion street. Rainbow cotton candy!" },
+    { id: "pin-34", name: "Afuri Ramen", location: "Harajuku, Tokyo", lat: 35.6695, lng: 139.7050, type: "Food", day: "Day 7", notes: "Famous yuzu shio ramen." },
+    { id: "pin-35", name: "Shibuya Crossing", location: "Shibuya, Tokyo", lat: 35.6595, lng: 139.7004, type: "Sightseeing", day: "Day 7", notes: "World's busiest intersection!" },
+    { id: "pin-36", name: "Shibuya Sky", location: "Shibuya, Tokyo", lat: 35.6580, lng: 139.7016, type: "Activity", day: "Day 7", notes: "360° rooftop views. Sunset time slot booked." },
+    { id: "pin-37", name: "Uobei Sushi", location: "Shibuya, Tokyo", lat: 35.6590, lng: 139.7000, type: "Food", day: "Day 7", notes: "Conveyor belt sushi. Bullet train delivery!" },
     
     // Day 8: Tokyo Asakusa & Akihabara (Jan 25)
-    { id: 38, name: "Senso-ji Temple", location: "Asakusa, Tokyo", lat: 35.7148, lng: 139.7967, type: "Sightseeing", day: "Day 8", notes: "Tokyo's oldest temple. Nakamise shopping street." },
-    { id: 39, name: "Wargo Kimono Rental", location: "Asakusa, Tokyo", lat: 35.7118, lng: 139.7950, type: "Activity", day: "Day 8", notes: "Kimono rental experience. Return by 5 PM." },
-    { id: 40, name: "Asakusa Mugitoro", location: "Asakusa, Tokyo", lat: 35.7135, lng: 139.7955, type: "Food", day: "Day 8", notes: "Tororo specialty restaurant since 1929." },
-    { id: 41, name: "Akihabara Electric Town", location: "Akihabara, Tokyo", lat: 35.7023, lng: 139.7745, type: "Sightseeing", day: "Day 8", notes: "Electronics & anime district. Yodobashi Camera!" },
-    { id: 42, name: "Gonpachi Nishi-Azabu", location: "Nishi-Azabu, Tokyo", lat: 35.6590, lng: 139.7266, type: "Food", day: "Day 8", notes: "Kill Bill restaurant. Reservation 7 PM." },
+    { id: "pin-38", name: "Senso-ji Temple", location: "Asakusa, Tokyo", lat: 35.7148, lng: 139.7967, type: "Sightseeing", day: "Day 8", notes: "Tokyo's oldest temple. Nakamise shopping street." },
+    { id: "pin-39", name: "Wargo Kimono Rental", location: "Asakusa, Tokyo", lat: 35.7118, lng: 139.7950, type: "Activity", day: "Day 8", notes: "Kimono rental experience. Return by 5 PM." },
+    { id: "pin-40", name: "Asakusa Mugitoro", location: "Asakusa, Tokyo", lat: 35.7135, lng: 139.7955, type: "Food", day: "Day 8", notes: "Tororo specialty restaurant since 1929." },
+    { id: "pin-41", name: "Akihabara Electric Town", location: "Akihabara, Tokyo", lat: 35.7023, lng: 139.7745, type: "Sightseeing", day: "Day 8", notes: "Electronics & anime district. Yodobashi Camera!" },
+    { id: "pin-42", name: "Gonpachi Nishi-Azabu", location: "Nishi-Azabu, Tokyo", lat: 35.6590, lng: 139.7266, type: "Food", day: "Day 8", notes: "Kill Bill restaurant. Reservation 7 PM." },
     
     // Day 9: Tokyo → Home (Jan 26)
-    { id: 43, name: "Tsukiji Outer Market", location: "Tsukiji, Tokyo", lat: 35.6654, lng: 139.7707, type: "Food", day: "Day 9", notes: "Final breakfast in Japan. Fresh sushi!" },
-    { id: 44, name: "Ginza Shopping District", location: "Ginza, Tokyo", lat: 35.6717, lng: 139.7649, type: "Activity", day: "Day 9", notes: "Last-minute shopping. Tax-free with passport." },
-    { id: 45, name: "Narita International Airport", location: "Chiba, Japan", lat: 35.7720, lng: 140.3929, type: "Departure", day: "Day 9", notes: "JL 006 departure 5:55 PM. Sayonara Japan!" },
+    { id: "pin-43", name: "Tsukiji Outer Market", location: "Tsukiji, Tokyo", lat: 35.6654, lng: 139.7707, type: "Food", day: "Day 9", notes: "Final breakfast in Japan. Fresh sushi!" },
+    { id: "pin-44", name: "Ginza Shopping District", location: "Ginza, Tokyo", lat: 35.6717, lng: 139.7649, type: "Activity", day: "Day 9", notes: "Last-minute shopping. Tax-free with passport." },
+    { id: "pin-45", name: "Narita International Airport", location: "Chiba, Japan", lat: 35.7720, lng: 140.3929, type: "Departure", day: "Day 9", notes: "JL 006 departure 5:55 PM. Sayonara Japan!" },
 ];
 
 // Context
@@ -684,9 +684,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Map Pin Actions
         addMapPin: (pin) => {
             setState(s => {
-                const newPin = { ...pin, id: Date.now() };
+                const newPin = { ...pin, id: crypto.randomUUID() };
                 const newActivity: ActivityItem = {
-                    id: Date.now() + 1,
+                    id: Date.now(),
                     user: "You",
                     action: "added pin",
                     target: newPin.name,
@@ -817,5 +817,12 @@ export function useMapPins() {
         addMapPin: store.addMapPin,
         updateMapPin: store.updateMapPin,
         deleteMapPin: store.deleteMapPin,
+    };
+}
+
+export function usePlaces() {
+    const store = useAppStore();
+    return {
+        places: store.places,
     };
 }

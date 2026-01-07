@@ -5,464 +5,570 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export const maxDuration = 60;
 
-// Lazy-initialize Supabase client for server-side operations
-let _supabase: SupabaseClient | null = null;
+// Check if OpenAI is configured
+const isOpenAIConfigured = () => {
+    return !!process.env.OPENAI_API_KEY;
+};
 
-function getSupabase(): SupabaseClient {
-    if (!_supabase) {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!url || !key) {
-            throw new Error('Supabase credentials not configured');
-        }
-        _supabase = createClient(url, key);
+// Check if Supabase is configured
+const isSupabaseConfigured = () => {
+    return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && 
+              (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
+};
+
+// Create a simple Supabase client for server-side use
+function createServerClient(): SupabaseClient | null {
+    if (!isSupabaseConfigured()) {
+        return null;
     }
-    return _supabase;
+    return createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 }
 
-// Default trip ID
-const DEFAULT_TRIP_ID = "550e8400-e29b-41d4-a716-446655440000";
-
-// Helper to parse day references like "tomorrow", "thursday", "day 3", "jan 20"
-function parseDayReference(reference: string): { dayLabel?: string; date?: string } | null {
-    const ref = reference.toLowerCase().trim();
-    
-    // Map day names to their trip dates
-    const tripDays = [
-        { label: 'Day 1', date: '2026-01-18', weekday: 'saturday' },
-        { label: 'Day 2', date: '2026-01-19', weekday: 'sunday' },
-        { label: 'Day 3', date: '2026-01-20', weekday: 'monday' },
-        { label: 'Day 4', date: '2026-01-21', weekday: 'tuesday' },
-        { label: 'Day 5', date: '2026-01-22', weekday: 'wednesday' },
-        { label: 'Day 6', date: '2026-01-23', weekday: 'thursday' },
-        { label: 'Day 7', date: '2026-01-24', weekday: 'friday' },
-        { label: 'Day 8', date: '2026-01-25', weekday: 'saturday' },
-        { label: 'Day 9', date: '2026-01-26', weekday: 'sunday' },
-    ];
-
-    // Check for "day X" pattern
-    const dayMatch = ref.match(/day\s*(\d+)/i);
-    if (dayMatch) {
-        const dayNum = parseInt(dayMatch[1]);
-        const found = tripDays.find(d => d.label === `Day ${dayNum}`);
-        if (found) return { dayLabel: found.label, date: found.date };
-    }
-
-    // Check for weekday names
-    const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    for (const weekday of weekdays) {
-        if (ref.includes(weekday)) {
-            const found = tripDays.find(d => d.weekday === weekday);
-            if (found) return { dayLabel: found.label, date: found.date };
-        }
-    }
-
-    // Check for date patterns like "jan 20", "january 20", "1/20"
-    const monthNames = ['jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june', 'jul', 'july', 'aug', 'august', 'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'];
-    for (let i = 0; i < monthNames.length; i++) {
-        const monthName = monthNames[i];
-        const monthNum = Math.floor(i / 2) + 1;
-        const dateMatch = ref.match(new RegExp(`${monthName}\\s*(\\d{1,2})`));
-        if (dateMatch) {
-            const day = parseInt(dateMatch[1]);
-            const dateStr = `2026-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const found = tripDays.find(d => d.date === dateStr);
-            if (found) return { dayLabel: found.label, date: found.date };
-        }
-    }
-
-    // Handle "tomorrow" - for demo purposes, let's say "tomorrow" means Day 2 (next day of trip)
-    if (ref === 'tomorrow' || ref === 'tomorrow morning' || ref === 'tomorrow evening') {
-        return { dayLabel: 'Day 2', date: '2026-01-19' };
-    }
-
-    // Handle "today" - for demo, Day 1
-    if (ref === 'today') {
-        return { dayLabel: 'Day 1', date: '2026-01-18' };
-    }
-
-    return null;
-}
-
-// Type definitions for database records
-interface DbDay {
+interface TripDay {
     id: string;
-    day_label: string;
+    trip_id: string;
     date: string;
-    location: string;
+    day_label: string;
+    location: string | null;
+    day_order: number;
 }
 
-interface DbItem {
+interface ItineraryItem {
     id: string;
+    trip_id: string;
     day_id: string;
     time: string;
     title: string;
     type: string;
-    status: string;
     location: string;
-    description: string;
-    duration: string;
-    sort_order?: number;
+    status: string;
+    assignees: string[];
+    item_order: number;
+    description?: string;
 }
 
+// Helper to parse relative dates like "tomorrow", "thursday", etc.
+function parseRelativeDate(dateStr: string, tripDays: TripDay[]): string | null {
+    const lower = dateStr.toLowerCase().trim();
+    
+    // Direct day name matching
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayIndex = dayNames.indexOf(lower);
+    
+    if (dayIndex !== -1) {
+        // Find a day that matches this weekday
+        for (const day of tripDays) {
+            const dayDate = new Date(day.date + ', 2026');
+            if (dayDate.getDay() === dayIndex) {
+                return day.id;
+            }
+        }
+    }
+    
+    // Match by day label like "day 1", "day 2"
+    const dayMatch = lower.match(/day\s*(\d+)/i);
+    if (dayMatch) {
+        const dayNum = parseInt(dayMatch[1]);
+        const found = tripDays.find(d => d.day_label.toLowerCase() === `day ${dayNum}`);
+        if (found) return found.id;
+    }
+    
+    // Match by date like "jan 18", "january 18"
+    for (const day of tripDays) {
+        if (day.date.toLowerCase().includes(lower) || lower.includes(day.date.toLowerCase())) {
+            return day.id;
+        }
+    }
+    
+    // Tomorrow - find next day after today in the trip
+    if (lower === 'tomorrow') {
+        return tripDays.length > 1 ? tripDays[1].id : tripDays[0]?.id;
+    }
+    
+    // Today
+    if (lower === 'today') {
+        return tripDays[0]?.id;
+    }
+    
+    return null;
+}
+
+// Helper to parse time strings
+function parseTime(timeStr: string): string {
+    const lower = timeStr.toLowerCase().trim();
+    
+    if (lower.includes('morning') || lower.includes('breakfast')) {
+        return '9:00 AM';
+    }
+    if (lower.includes('lunch') || lower.includes('noon')) {
+        return '12:00 PM';
+    }
+    if (lower.includes('afternoon')) {
+        return '3:00 PM';
+    }
+    if (lower.includes('dinner') || lower.includes('evening')) {
+        return '7:00 PM';
+    }
+    if (lower.includes('night')) {
+        return '9:00 PM';
+    }
+    
+    const timeMatch = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (timeMatch) {
+        let hours = parseInt(timeMatch[1]);
+        const minutes = timeMatch[2] || '00';
+        const period = timeMatch[3]?.toLowerCase();
+        
+        if (period === 'pm' && hours < 12) hours += 12;
+        if (period === 'am' && hours === 12) hours = 0;
+        
+        const h = hours % 12 || 12;
+        const p = hours >= 12 ? 'PM' : 'AM';
+        return `${h}:${minutes} ${p}`;
+    }
+    
+    return timeStr;
+}
+
+// Infer item type from title
+function inferItemType(title: string): string {
+    const lower = title.toLowerCase();
+    
+    if (lower.includes('breakfast') || lower.includes('lunch') || lower.includes('dinner') || 
+        lower.includes('restaurant') || lower.includes('cafe') || lower.includes('food') ||
+        lower.includes('eat') || lower.includes('ramen') || lower.includes('sushi')) {
+        return 'Food';
+    }
+    if (lower.includes('flight') || lower.includes('arrive') || lower.includes('airport')) {
+        return 'Flight';
+    }
+    if (lower.includes('train') || lower.includes('shinkansen')) {
+        return 'Train';
+    }
+    if (lower.includes('hotel') || lower.includes('check-in') || lower.includes('check in') || lower.includes('airbnb')) {
+        return 'Hotel';
+    }
+    if (lower.includes('temple') || lower.includes('shrine') || lower.includes('castle') || 
+        lower.includes('museum') || lower.includes('park') || lower.includes('garden')) {
+        return 'Sightseeing';
+    }
+    if (lower.includes('shopping') || lower.includes('market')) {
+        return 'Activity';
+    }
+    
+    return 'Activity';
+}
+
+// Demo trip days for when Supabase is not configured
+const DEMO_TRIP_DAYS: TripDay[] = [
+    { id: 'day-1', trip_id: 'demo', date: 'Jan 18', day_label: 'Day 1', location: 'Tokyo', day_order: 0 },
+    { id: 'day-2', trip_id: 'demo', date: 'Jan 19', day_label: 'Day 2', location: 'Tokyo', day_order: 1 },
+    { id: 'day-3', trip_id: 'demo', date: 'Jan 20', day_label: 'Day 3', location: 'Tokyo', day_order: 2 },
+    { id: 'day-4', trip_id: 'demo', date: 'Jan 21', day_label: 'Day 4', location: 'Niseko', day_order: 3 },
+    { id: 'day-5', trip_id: 'demo', date: 'Jan 22', day_label: 'Day 5', location: 'Niseko', day_order: 4 },
+    { id: 'day-6', trip_id: 'demo', date: 'Jan 23', day_label: 'Day 6', location: 'Kyoto', day_order: 5 },
+    { id: 'day-7', trip_id: 'demo', date: 'Jan 24', day_label: 'Day 7', location: 'Kyoto', day_order: 6 },
+    { id: 'day-8', trip_id: 'demo', date: 'Jan 25', day_label: 'Day 8', location: 'Kyoto', day_order: 7 },
+    { id: 'day-9', trip_id: 'demo', date: 'Jan 26', day_label: 'Day 9', location: 'Tokyo', day_order: 8 },
+];
+
 export async function POST(req: Request) {
-    const { messages, tripId = DEFAULT_TRIP_ID } = await req.json();
-
-    const supabase = getSupabase();
-
-    // Fetch current trip data for context
-    const [tripData, daysData, itemsData] = await Promise.all([
-        supabase.from('trips').select('*').eq('id', tripId).single(),
-        supabase.from('days').select('*').eq('trip_id', tripId).order('sort_order'),
-        supabase.from('itinerary_items').select('*').eq('trip_id', tripId).order('sort_order'),
-    ]);
-
-    const trip = tripData.data;
-    const days: DbDay[] = daysData.data || [];
-    const items: DbItem[] = itemsData.data || [];
-
-    // Build context string for the AI
-    const tripContext = days.map((day) => {
-        const dayItems = items.filter((item) => item.day_id === day.id);
-        const itemsList = dayItems.map((item) => 
-            `  - ${item.time}: ${item.title} (${item.type}, ${item.status}) at ${item.location || 'TBD'}`
-        ).join('\n');
-        return `${day.day_label} (${day.date}) - ${day.location}:\n${itemsList || '  No items scheduled'}`;
-    }).join('\n\n');
-
-    const systemPrompt = `You are a helpful travel assistant for the HyperSpace trip planning app. You're helping plan a Japan trip for Camille and Miguel.
-
-CURRENT TRIP: ${trip?.name || 'Japan Adventure 2026'}
-DATES: January 18-26, 2026
+    // Check if OpenAI API key is configured
+    if (!isOpenAIConfigured()) {
+        return new Response(
+            JSON.stringify({ 
+                error: 'OpenAI API key not configured',
+                message: 'Please set OPENAI_API_KEY in your .env.local file to enable AI chat functionality.',
+                demoResponse: "I'm currently running in demo mode without an OpenAI API key. To enable full AI functionality, please add your OPENAI_API_KEY to a .env.local file in the project root."
+            }),
+            { 
+                status: 503, 
+                headers: { 'Content-Type': 'application/json' } 
+            }
+        );
+    }
+    
+    const { messages, tripId, itineraryContext } = await req.json();
+    
+    const supabase = createServerClient();
+    const isDemoMode = !supabase;
+    
+    // Fetch trip days for date resolution
+    let tripDays: TripDay[] = [];
+    if (isDemoMode) {
+        tripDays = DEMO_TRIP_DAYS;
+    } else if (tripId) {
+        const { data } = await supabase
+            .from('trip_days')
+            .select('*')
+            .eq('trip_id', tripId)
+            .order('day_order', { ascending: true });
+        tripDays = (data as TripDay[]) || [];
+    }
+    
+    const systemPrompt = `You are an intelligent travel assistant for a trip planning app called "HyperSpace". You help users manage their Japan trip itinerary.
 
 CURRENT ITINERARY:
-${tripContext}
+${itineraryContext || 'No itinerary data available.'}
 
-You have access to tools to:
-1. Add new items to the itinerary (meals, activities, transportation, etc.)
-2. Update existing items (change time, status, description, etc.)
-3. Delete items from the itinerary
-4. Query the itinerary for specific days or items
+AVAILABLE DAYS:
+${tripDays.map(d => `- ${d.day_label} (${d.date}): ${d.location || 'No location set'} [ID: ${d.id}]`).join('\n')}
 
-When users ask to add something:
-- Parse the day reference (e.g., "tomorrow", "thursday", "day 3", "jan 20")
-- Infer the type of activity from context (Food, Activity, Sightseeing, etc.)
-- Infer a reasonable time if not specified
-- Default assignees to ["C", "M"] (Camille and Miguel)
-- Default status to "idea" unless they say it's booked/confirmed
+YOUR CAPABILITIES:
+1. Add new items to the itinerary using the add_itinerary_item tool
+2. Update existing items using the update_itinerary_item tool  
+3. Delete items using the delete_itinerary_item tool
+4. Answer questions about the trip schedule
 
-When users ask about the plan:
-- Query the itinerary for the relevant day(s)
-- Provide a clear, friendly summary
+IMPORTANT RULES:
+- When the user asks to add something, use the add_itinerary_item tool
+- When parsing dates like "tomorrow", "thursday", "day 3", match them to the available days above
+- For times like "morning", use 9:00 AM; "lunch" use 12:00 PM; "dinner/evening" use 7:00 PM
+- Infer the item type from context (Food for restaurants/cafes, Sightseeing for temples/shrines, etc.)
+- Always confirm what you've done after making changes
+- Be concise and helpful
+- When asked about plans for a specific day, look up that day in the itinerary and summarize it
 
-Be concise but helpful. After making changes, confirm what you did.`;
-
-    // Define tool schemas
-    const addItemSchema = z.object({
-        dayReference: z.string().describe('The day to add the item to. Can be "Day 1", "Day 2", etc., or a date like "2026-01-20", or natural language like "tomorrow", "thursday"'),
-        title: z.string().describe('The title/name of the item (e.g., "Breakfast at Yuyu Cafe", "Visit Fushimi Inari")'),
-        time: z.string().describe('The time of the item in format like "9:00 AM", "12:30 PM"'),
-        type: z.enum(['Flight', 'Train', 'Bus', 'Ferry', 'RentalCar', 'Taxi', 'Hotel', 'Airbnb', 'Food', 'Activity', 'Sightseeing', 'Arrival', 'Departure', 'Transfer', 'Meeting', 'Other']).describe('The type of item'),
-        location: z.string().optional().describe('The location of the item'),
-        description: z.string().optional().describe('Additional description or notes'),
-        status: z.enum(['confirmed', 'booked', 'pending', 'idea', 'info']).default('idea').describe('The status of the item'),
-        duration: z.string().optional().describe('Duration like "1h", "30m", "2h 30m"'),
-        assignees: z.array(z.string()).default(['C', 'M']).describe('Array of assignee initials'),
-    });
-
-    const updateItemSchema = z.object({
-        itemTitle: z.string().describe('The title of the item to update (partial match is ok)'),
-        dayReference: z.string().optional().describe('The day the item is on (helps narrow down if multiple items have similar names)'),
-        updates: z.object({
-            time: z.string().optional(),
-            title: z.string().optional(),
-            status: z.enum(['confirmed', 'booked', 'pending', 'idea', 'info']).optional(),
-            description: z.string().optional(),
-            location: z.string().optional(),
-            duration: z.string().optional(),
-        }).describe('The fields to update'),
-    });
-
-    const deleteItemSchema = z.object({
-        itemTitle: z.string().describe('The title of the item to delete (partial match is ok)'),
-        dayReference: z.string().optional().describe('The day the item is on (helps narrow down if multiple items have similar names)'),
-    });
-
-    const getItinerarySchema = z.object({
-        dayReference: z.string().optional().describe('The day to get the itinerary for. Leave empty to get the full trip itinerary.'),
-    });
+TRIP CONTEXT:
+- This is a Japan trip for Camille (C) and Miguel (M)
+- The trip runs from Jan 18-26, 2026
+- Default assignees for new items should be ["C", "M"]`;
 
     const result = streamText({
-        model: openai('gpt-4-turbo'),
+        model: openai('gpt-4o'),
         messages,
         system: systemPrompt,
         tools: {
-            addItineraryItem: {
-                description: 'Add a new item to the trip itinerary. Use this when the user wants to add a meal, activity, transportation, or any other event to their trip.',
-                inputSchema: addItemSchema,
-                execute: async (args: z.infer<typeof addItemSchema>) => {
-                    const { dayReference, title, time, type, location, description, status, duration, assignees } = args;
-                    try {
-                        // Find the day
-                        const parsed = parseDayReference(dayReference);
-                        let day: DbDay | undefined = undefined;
-                        
-                        if (parsed?.dayLabel) {
-                            day = days.find((d) => d.day_label.toLowerCase() === parsed.dayLabel!.toLowerCase());
-                        }
-                        if (!day && parsed?.date) {
-                            day = days.find((d) => d.date === parsed.date);
-                        }
-                        if (!day) {
-                            // Try direct match
-                            day = days.find((d) => 
-                                d.day_label.toLowerCase() === dayReference.toLowerCase() ||
-                                d.date === dayReference
-                            );
-                        }
-
-                        if (!day) {
-                            return { success: false, error: `Could not find day matching "${dayReference}". Valid days are Day 1-9 (Jan 18-26).` };
-                        }
-
-                        // Get max sort order
-                        const dayItems = items.filter((i) => i.day_id === day!.id);
-                        const maxSortOrder = dayItems.length > 0 
-                            ? Math.max(...dayItems.map((i) => i.sort_order || 0)) + 1 
-                            : 0;
-
-                        // Insert the item
-                        const { data, error } = await supabase
-                            .from('itinerary_items')
-                            .insert({
-                                day_id: day.id,
-                                trip_id: tripId,
-                                time,
+            add_itinerary_item: {
+                description: 'Add a new item to the trip itinerary. Use this when the user wants to add activities, meals, transportation, etc.',
+                inputSchema: z.object({
+                    day_reference: z.string().describe('The day to add the item to. Can be "Day 1", "Jan 18", "tomorrow", "thursday", etc.'),
+                    time: z.string().describe('The time for the item. Can be specific like "9:00 AM" or general like "morning", "lunch", "dinner"'),
+                    title: z.string().describe('The title/name of the activity'),
+                    location: z.string().optional().describe('The location where this takes place'),
+                    description: z.string().optional().describe('Additional details about the activity'),
+                    type: z.string().optional().describe('Type of item: Food, Sightseeing, Hotel, Train, Flight, Activity, etc.'),
+                    status: z.enum(['idea', 'pending', 'booked', 'confirmed']).optional().describe('Status of the item'),
+                }),
+                execute: async (input: {
+                    day_reference: string;
+                    time: string;
+                    title: string;
+                    location?: string;
+                    description?: string;
+                    type?: string;
+                    status?: 'idea' | 'pending' | 'booked' | 'confirmed';
+                }) => {
+                    const { day_reference, time, title, location, description, type, status } = input;
+                    
+                    const dayId = parseRelativeDate(day_reference, tripDays);
+                    if (!dayId) {
+                        return { 
+                            success: false, 
+                            error: `Could not find day matching "${day_reference}". Available days: ${tripDays.map(d => d.day_label).join(', ')}` 
+                        };
+                    }
+                    
+                    const day = tripDays.find(d => d.id === dayId);
+                    const parsedTime = parseTime(time);
+                    const itemType = type || inferItemType(title);
+                    
+                    // In demo mode, just return success without database operations
+                    if (isDemoMode) {
+                        return { 
+                            success: true, 
+                            demoMode: true,
+                            item: {
+                                id: `demo-${Date.now()}`,
+                                time: parsedTime,
                                 title,
-                                type,
-                                location: location || null,
-                                description: description || null,
-                                status,
-                                duration: duration || null,
-                                assignees,
-                                sort_order: maxSortOrder,
-                            })
-                            .select()
-                            .single();
-
-                        if (error) throw error;
-
-                        // Log activity
-                        await supabase.from('activities').insert({
-                            trip_id: tripId,
-                            user_name: 'AI Agent',
-                            action: 'added',
-                            target: title,
-                        });
-
-                        return { 
-                            success: true, 
-                            item: data,
-                            message: `Added "${title}" to ${day.day_label} (${day.date}) at ${time}`
+                                location: location || 'TBD',
+                                type: itemType,
+                                status: status || 'idea',
+                            },
+                            message: `[Demo Mode] Would add "${title}" to ${day?.day_label} (${day?.date}) at ${parsedTime}. Connect Supabase to persist changes.`
                         };
-                    } catch (err) {
-                        console.error('Error adding item:', err);
-                        return { success: false, error: String(err) };
                     }
+                    
+                    if (!tripId) {
+                        return { success: false, error: 'No trip selected' };
+                    }
+                    
+                    const { data: existingItems } = await supabase!
+                        .from('itinerary_items')
+                        .select('item_order')
+                        .eq('day_id', dayId)
+                        .order('item_order', { ascending: false })
+                        .limit(1);
+                    
+                    const items = existingItems as { item_order: number }[] | null;
+                    const maxOrder = items?.[0]?.item_order ?? -1;
+                    
+                    const { data: newItem, error } = await supabase!
+                        .from('itinerary_items')
+                        .insert({
+                            trip_id: tripId,
+                            day_id: dayId,
+                            time: parsedTime,
+                            title,
+                            location: location || 'TBD',
+                            description,
+                            type: itemType,
+                            status: status || 'idea',
+                            assignees: ['C', 'M'],
+                            item_order: maxOrder + 1,
+                        })
+                        .select()
+                        .single();
+                    
+                    if (error) {
+                        return { success: false, error: error.message };
+                    }
+                    
+                    await supabase!.from('activities').insert({
+                        trip_id: tripId,
+                        user_name: 'AI Assistant',
+                        action: 'added',
+                        target: title,
+                    });
+                    
+                    return { 
+                        success: true, 
+                        item: newItem,
+                        message: `Added "${title}" to ${day?.day_label} (${day?.date}) at ${parsedTime}`
+                    };
                 },
             },
-
-            updateItineraryItem: {
-                description: 'Update an existing item in the itinerary. Use this to change the time, status, description, or other details of an existing item.',
-                inputSchema: updateItemSchema,
-                execute: async (args: z.infer<typeof updateItemSchema>) => {
-                    const { itemTitle, dayReference, updates } = args;
-                    try {
-                        // Find the item
-                        let matchingItems = items.filter((i) => 
-                            i.title.toLowerCase().includes(itemTitle.toLowerCase())
-                        );
-
-                        // Narrow down by day if provided
-                        if (dayReference && matchingItems.length > 1) {
-                            const parsed = parseDayReference(dayReference);
-                            if (parsed?.dayLabel) {
-                                const day = days.find((d) => d.day_label.toLowerCase() === parsed.dayLabel!.toLowerCase());
-                                if (day) {
-                                    matchingItems = matchingItems.filter((i) => i.day_id === day.id);
-                                }
-                            }
-                        }
-
-                        if (matchingItems.length === 0) {
-                            return { success: false, error: `Could not find item matching "${itemTitle}"` };
-                        }
-
-                        const item = matchingItems[0];
-
-                        // Build update object
-                        const dbUpdates: Record<string, unknown> = {};
-                        if (updates.time) dbUpdates.time = updates.time;
-                        if (updates.title) dbUpdates.title = updates.title;
-                        if (updates.status) dbUpdates.status = updates.status;
-                        if (updates.description) dbUpdates.description = updates.description;
-                        if (updates.location) dbUpdates.location = updates.location;
-                        if (updates.duration) dbUpdates.duration = updates.duration;
-
-                        const { data, error } = await supabase
-                            .from('itinerary_items')
-                            .update(dbUpdates)
-                            .eq('id', item.id)
-                            .select()
-                            .single();
-
-                        if (error) throw error;
-
-                        // Log activity
-                        await supabase.from('activities').insert({
-                            trip_id: tripId,
-                            user_name: 'AI Agent',
-                            action: 'updated',
-                            target: item.title,
-                        });
-
+            
+            update_itinerary_item: {
+                description: 'Update an existing itinerary item. Use this when the user wants to change details of an existing activity.',
+                inputSchema: z.object({
+                    item_title: z.string().describe('The title of the item to update (partial match is OK)'),
+                    day_reference: z.string().optional().describe('The day the item is on, to help identify it'),
+                    updates: z.object({
+                        time: z.string().optional(),
+                        title: z.string().optional(),
+                        location: z.string().optional(),
+                        description: z.string().optional(),
+                        status: z.enum(['idea', 'pending', 'booked', 'confirmed']).optional(),
+                    }).describe('The fields to update'),
+                }),
+                execute: async (input: {
+                    item_title: string;
+                    day_reference?: string;
+                    updates: {
+                        time?: string;
+                        title?: string;
+                        location?: string;
+                        description?: string;
+                        status?: 'idea' | 'pending' | 'booked' | 'confirmed';
+                    };
+                }) => {
+                    const { item_title, day_reference, updates } = input;
+                    
+                    // In demo mode, just return success without database operations
+                    if (isDemoMode) {
+                        const updateDetails = Object.entries(updates)
+                            .filter(([, v]) => v !== undefined)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ');
                         return { 
                             success: true, 
-                            item: data,
-                            message: `Updated "${item.title}"`
+                            demoMode: true,
+                            message: `[Demo Mode] Would update "${item_title}" with: ${updateDetails}. Connect Supabase to persist changes.`
                         };
-                    } catch (err) {
-                        console.error('Error updating item:', err);
-                        return { success: false, error: String(err) };
                     }
+                    
+                    if (!tripId) {
+                        return { success: false, error: 'No trip selected' };
+                    }
+                    
+                    let query = supabase!
+                        .from('itinerary_items')
+                        .select('*')
+                        .eq('trip_id', tripId)
+                        .ilike('title', `%${item_title}%`);
+                    
+                    if (day_reference) {
+                        const dayId = parseRelativeDate(day_reference, tripDays);
+                        if (dayId) {
+                            query = query.eq('day_id', dayId);
+                        }
+                    }
+                    
+                    const { data: foundItems } = await query.limit(1);
+                    const items = foundItems as ItineraryItem[] | null;
+                    
+                    if (!items || items.length === 0) {
+                        return { success: false, error: `Could not find item matching "${item_title}"` };
+                    }
+                    
+                    const item = items[0];
+                    
+                    const updateData: Record<string, string> = {};
+                    if (updates.time) updateData.time = parseTime(updates.time);
+                    if (updates.title) updateData.title = updates.title;
+                    if (updates.location) updateData.location = updates.location;
+                    if (updates.description) updateData.description = updates.description;
+                    if (updates.status) updateData.status = updates.status;
+                    
+                    const { error } = await supabase!
+                        .from('itinerary_items')
+                        .update(updateData)
+                        .eq('id', item.id);
+                    
+                    if (error) {
+                        return { success: false, error: error.message };
+                    }
+                    
+                    await supabase!.from('activities').insert({
+                        trip_id: tripId,
+                        user_name: 'AI Assistant',
+                        action: 'updated',
+                        target: item.title,
+                    });
+                    
+                    return { 
+                        success: true, 
+                        message: `Updated "${item.title}"`
+                    };
                 },
             },
-
-            deleteItineraryItem: {
-                description: 'Delete an item from the itinerary. Use this when the user wants to remove an event from their trip.',
-                inputSchema: deleteItemSchema,
-                execute: async (args: z.infer<typeof deleteItemSchema>) => {
-                    const { itemTitle, dayReference } = args;
-                    try {
-                        // Find the item
-                        let matchingItems = items.filter((i) => 
-                            i.title.toLowerCase().includes(itemTitle.toLowerCase())
-                        );
-
-                        // Narrow down by day if provided
-                        if (dayReference && matchingItems.length > 1) {
-                            const parsed = parseDayReference(dayReference);
-                            if (parsed?.dayLabel) {
-                                const day = days.find((d) => d.day_label.toLowerCase() === parsed.dayLabel!.toLowerCase());
-                                if (day) {
-                                    matchingItems = matchingItems.filter((i) => i.day_id === day.id);
-                                }
-                            }
-                        }
-
-                        if (matchingItems.length === 0) {
-                            return { success: false, error: `Could not find item matching "${itemTitle}"` };
-                        }
-
-                        const item = matchingItems[0];
-
-                        const { error } = await supabase
-                            .from('itinerary_items')
-                            .delete()
-                            .eq('id', item.id);
-
-                        if (error) throw error;
-
-                        // Log activity
-                        await supabase.from('activities').insert({
-                            trip_id: tripId,
-                            user_name: 'AI Agent',
-                            action: 'deleted',
-                            target: item.title,
-                        });
-
+            
+            delete_itinerary_item: {
+                description: 'Delete an item from the itinerary. Use this when the user wants to remove an activity.',
+                inputSchema: z.object({
+                    item_title: z.string().describe('The title of the item to delete (partial match is OK)'),
+                    day_reference: z.string().optional().describe('The day the item is on, to help identify it'),
+                }),
+                execute: async (input: {
+                    item_title: string;
+                    day_reference?: string;
+                }) => {
+                    const { item_title, day_reference } = input;
+                    
+                    // In demo mode, just return success without database operations
+                    if (isDemoMode) {
                         return { 
                             success: true, 
-                            message: `Deleted "${item.title}"`
+                            demoMode: true,
+                            message: `[Demo Mode] Would delete "${item_title}". Connect Supabase to persist changes.`
                         };
-                    } catch (err) {
-                        console.error('Error deleting item:', err);
-                        return { success: false, error: String(err) };
                     }
+                    
+                    if (!tripId) {
+                        return { success: false, error: 'No trip selected' };
+                    }
+                    
+                    let query = supabase!
+                        .from('itinerary_items')
+                        .select('*')
+                        .eq('trip_id', tripId)
+                        .ilike('title', `%${item_title}%`);
+                    
+                    if (day_reference) {
+                        const dayId = parseRelativeDate(day_reference, tripDays);
+                        if (dayId) {
+                            query = query.eq('day_id', dayId);
+                        }
+                    }
+                    
+                    const { data: foundItems } = await query.limit(1);
+                    const items = foundItems as ItineraryItem[] | null;
+                    
+                    if (!items || items.length === 0) {
+                        return { success: false, error: `Could not find item matching "${item_title}"` };
+                    }
+                    
+                    const item = items[0];
+                    
+                    const { error } = await supabase!
+                        .from('itinerary_items')
+                        .delete()
+                        .eq('id', item.id);
+                    
+                    if (error) {
+                        return { success: false, error: error.message };
+                    }
+                    
+                    await supabase!.from('activities').insert({
+                        trip_id: tripId,
+                        user_name: 'AI Assistant',
+                        action: 'removed',
+                        target: item.title,
+                    });
+                    
+                    return { 
+                        success: true, 
+                        message: `Deleted "${item.title}"`
+                    };
                 },
             },
-
-            getItinerary: {
-                description: 'Get the itinerary for a specific day or the entire trip. Use this when the user asks about the plan for a specific day.',
-                inputSchema: getItinerarySchema,
-                execute: async (args: z.infer<typeof getItinerarySchema>) => {
-                    const { dayReference } = args;
-                    try {
-                        if (!dayReference) {
-                            // Return full itinerary summary
-                            const summary = days.map((day) => {
-                                const dayItems = items.filter((i) => i.day_id === day.id);
-                                return {
-                                    day: day.day_label,
-                                    date: day.date,
-                                    location: day.location,
-                                    itemCount: dayItems.length,
-                                    items: dayItems.map((i) => ({
-                                        time: i.time,
-                                        title: i.title,
-                                        type: i.type,
-                                        status: i.status,
-                                        location: i.location,
-                                    })),
-                                };
-                            });
-                            return { success: true, itinerary: summary };
-                        }
-
-                        // Find specific day
-                        const parsed = parseDayReference(dayReference);
-                        let day: DbDay | undefined = undefined;
-                        
-                        if (parsed?.dayLabel) {
-                            day = days.find((d) => d.day_label.toLowerCase() === parsed.dayLabel!.toLowerCase());
-                        }
-                        if (!day && parsed?.date) {
-                            day = days.find((d) => d.date === parsed.date);
-                        }
-                        if (!day) {
-                            day = days.find((d) => 
-                                d.day_label.toLowerCase() === dayReference.toLowerCase() ||
-                                d.date === dayReference
-                            );
-                        }
-
-                        if (!day) {
-                            return { success: false, error: `Could not find day matching "${dayReference}"` };
-                        }
-
-                        const dayItems = items.filter((i) => i.day_id === day!.id);
-                        
+            
+            get_day_schedule: {
+                description: 'Get the schedule for a specific day. Use this to answer questions about what is planned.',
+                inputSchema: z.object({
+                    day_reference: z.string().describe('The day to look up. Can be "Day 1", "Jan 18", "tomorrow", "thursday", etc.'),
+                }),
+                execute: async (input: { day_reference: string }) => {
+                    const { day_reference } = input;
+                    
+                    const dayId = parseRelativeDate(day_reference, tripDays);
+                    if (!dayId) {
+                        return { 
+                            success: false, 
+                            error: `Could not find day matching "${day_reference}". Available days: ${tripDays.map(d => d.day_label).join(', ')}` 
+                        };
+                    }
+                    
+                    const day = tripDays.find(d => d.id === dayId);
+                    
+                    // In demo mode, return demo schedule from itineraryContext
+                    if (isDemoMode) {
                         return {
                             success: true,
+                            demoMode: true,
                             day: {
-                                label: day.day_label,
-                                date: day.date,
-                                location: day.location,
-                                items: dayItems.map((i) => ({
-                                    time: i.time,
-                                    title: i.title,
-                                    type: i.type,
-                                    status: i.status,
-                                    location: i.location,
-                                    description: i.description,
-                                    duration: i.duration,
-                                })),
+                                label: day?.day_label,
+                                date: day?.date,
+                                location: day?.location,
                             },
+                            items: [],
+                            note: `This is demo mode. The schedule for ${day?.day_label} (${day?.date}) in ${day?.location} would be fetched from Supabase when configured.`
                         };
-                    } catch (err) {
-                        console.error('Error getting itinerary:', err);
-                        return { success: false, error: String(err) };
                     }
+                    
+                    if (!tripId) {
+                        return { success: false, error: 'No trip selected' };
+                    }
+                    
+                    const { data: foundItems } = await supabase!
+                        .from('itinerary_items')
+                        .select('*')
+                        .eq('day_id', dayId)
+                        .order('item_order', { ascending: true });
+                    
+                    const items = foundItems as ItineraryItem[] | null;
+                    
+                    return {
+                        success: true,
+                        day: {
+                            label: day?.day_label,
+                            date: day?.date,
+                            location: day?.location,
+                        },
+                        items: items?.map(i => ({
+                            time: i.time,
+                            title: i.title,
+                            type: i.type,
+                            location: i.location,
+                            status: i.status,
+                            description: i.description,
+                        })) || [],
+                    };
                 },
             },
         },

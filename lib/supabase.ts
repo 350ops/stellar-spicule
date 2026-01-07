@@ -16,8 +16,29 @@ export const getSupabase = (): SupabaseClient => {
     return _supabase;
 };
 
-// Internal helper - all functions below use this
-const supabase = () => getSupabase();
+// Helper to check if Supabase is configured
+export function isSupabaseConfigured(): boolean {
+    return !!supabaseUrl && !!supabaseAnonKey;
+}
+
+// Create a proxy that lazily initializes the Supabase client
+// This allows using `supabase.from()` syntax while deferring initialization
+const supabaseProxy = new Proxy({} as SupabaseClient, {
+    get(_, prop) {
+        const client = getSupabase();
+        const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+        if (typeof value === 'function') {
+            return value.bind(client);
+        }
+        return value;
+    }
+});
+
+// Export for external use
+export { supabaseProxy as supabase };
+
+// Internal reference for functions in this file
+const supabase = supabaseProxy;
 
 // ============================================
 // Database Types
@@ -112,7 +133,7 @@ export interface DbActivity {
 // Trip Operations
 // ============================================
 export async function getTrip(tripId: string) {
-    const { data, error } = await supabase()
+    const { data, error } = await supabase
         .from('trips')
         .select('*')
         .eq('id', tripId)
@@ -123,7 +144,7 @@ export async function getTrip(tripId: string) {
 }
 
 export async function getTrips() {
-    const { data, error } = await supabase()
+    const { data, error } = await supabase
         .from('trips')
         .select('*')
         .order('created_at', { ascending: false });
@@ -136,7 +157,7 @@ export async function getTrips() {
 // Day Operations
 // ============================================
 export async function getDays(tripId: string) {
-    const { data, error } = await supabase()
+    const { data, error } = await supabase
         .from('days')
         .select('*')
         .eq('trip_id', tripId)

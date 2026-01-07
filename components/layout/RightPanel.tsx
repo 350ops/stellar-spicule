@@ -13,9 +13,6 @@ import {
     Plane,
     Sparkles,
     X,
-    CheckCircle2,
-    XCircle,
-    AlertCircle,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,81 +22,117 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { useActivities, useItinerary, type ItineraryItem } from "@/lib/supabase-store";
-
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { useProposals, useActivities, type Proposal } from "@/lib/store";
+import { useTripContext } from "@/lib/trip-context";
 
 interface RightPanelProps extends React.HTMLAttributes<HTMLDivElement> {
     isOpen: boolean;
     toggleOpen: () => void;
 }
 
-// Type for tool invocation from message parts
-interface ToolPart {
-    type: string;
-    toolCallId: string;
-    state: 'input-streaming' | 'input-available' | 'output-available' | 'error';
-    input?: Record<string, unknown>;
-    output?: {
-        success: boolean;
-        message?: string;
-        error?: string;
-        item?: Record<string, unknown>;
-        day?: Record<string, unknown>;
-        itinerary?: Array<Record<string, unknown>>;
-    };
-    errorText?: string;
-}
-
-// Helper to extract tool parts from message parts
-function getToolParts(parts: Array<{ type: string } & Record<string, unknown>>): ToolPart[] {
-    return parts.filter(part => 
-        part.type === 'dynamic-tool' || part.type.startsWith('tool-')
-    ) as unknown as ToolPart[];
-}
-
-// Helper to get text content from message parts
-function getTextContent(parts: Array<{ type: string } & Record<string, unknown>>): string {
-    return parts
-        .filter(part => part.type === 'text')
-        .map(part => (part as { type: 'text'; text: string }).text)
-        .join('');
+interface ChatMessage {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
 }
 
 export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
-    const { tripId } = useItinerary();
-    
-    const transport = React.useMemo(() => new DefaultChatTransport({
-        api: '/api/chat',
-        body: { tripId },
-    }), [tripId]);
-    
-    const { messages, sendMessage, status } = useChat({
-        transport,
-    });
-    const { activities } = useActivities();
+    const { tripId, getItineraryForAI, activities: realtimeActivities } = useTripContext();
     const scrollRef = React.useRef<HTMLDivElement>(null);
-    const [input, setInput] = React.useState('');
-    const isLoading = status === 'streaming' || status === 'submitted';
+    const [inputValue, setInputValue] = React.useState("");
+    const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+    const [isLoading, setIsLoading] = React.useState(false);
+    const [error, setError] = React.useState<Error | null>(null);
+    
+    const { proposals, approveProposal, rejectProposal } = useProposals();
+    const { activities } = useActivities();
 
-    // Auto-scroll to bottom when new messages arrive
+    // Use realtime activities if available, fallback to store
+    const displayActivities = realtimeActivities.length > 0 ? realtimeActivities : activities;
+
+    // Filter pending proposals
+    const pendingProposals = proposals.filter(p => p.status === "pending");
+    const recentApproved = proposals.filter(p => p.status === "approved").slice(0, 2);
+
+    // Auto-scroll on new messages
     React.useEffect(() => {
         if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
         }
     }, [messages]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInput(e.target.value);
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
-        const text = input;
-        setInput('');
-        await sendMessage({ text });
+        if (!inputValue.trim() || isLoading) return;
+        
+        const userMessage: ChatMessage = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: inputValue,
+        };
+        
+        setMessages(prev => [...prev, userMessage]);
+        setInputValue("");
+        setIsLoading(true);
+        setError(null);
+        
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [...messages, userMessage].map(m => ({
+                        role: m.role,
+                        content: m.content,
+                    })),
+                    tripId,
+                    itineraryContext: getItineraryForAI(),
+                }),
+            });
+            
+            if (!response.ok) {
+                // Check if it's a configuration error
+                if (response.status === 503) {
+                    const errorData = await response.json();
+                    // Add a helpful message from the API
+                    const assistantId = (Date.now() + 1).toString();
+                    setMessages(prev => [...prev, { 
+                        id: assistantId, 
+                        role: 'assistant', 
+                        content: errorData.demoResponse || 'The AI service is currently unavailable. Please check your configuration.'
+                    }]);
+                    return;
+                }
+                throw new Error('Failed to get response');
+            }
+            
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No reader available');
+            
+            const decoder = new TextDecoder();
+            let assistantContent = '';
+            const assistantId = (Date.now() + 1).toString();
+            
+            // Add empty assistant message
+            setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                assistantContent += chunk;
+                
+                // Update the assistant message
+                setMessages(prev => 
+                    prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
+                );
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err : new Error('Unknown error'));
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -123,8 +156,13 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
             <Tabs defaultValue="agent" className="flex-1 flex flex-col overflow-hidden">
                 <div className="px-4 py-2 border-b">
                     <TabsList className="w-full grid grid-cols-2">
-                        <TabsTrigger value="agent">
+                        <TabsTrigger value="agent" className="relative">
                             Agent
+                            {pendingProposals.length > 0 && (
+                                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center">
+                                    {pendingProposals.length}
+                                </span>
+                            )}
                         </TabsTrigger>
                         <TabsTrigger value="activity">Activity</TabsTrigger>
                     </TabsList>
@@ -142,57 +180,33 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                                 <div className="space-y-1">
                                     <p className="text-xs font-semibold text-muted-foreground">Travel Agent</p>
                                     <div className="bg-muted/50 p-3 rounded-lg text-sm rounded-tl-none">
-                                        Hi! I can help you plan your Japan trip. Try saying things like:
-                                        <ul className="mt-2 space-y-1 text-muted-foreground">
-                                            <li>• &quot;Add breakfast at Yuyu Cafe tomorrow morning&quot;</li>
-                                            <li>• &quot;What&apos;s the plan for Thursday?&quot;</li>
-                                            <li>• &quot;Change the Shibuya Sky time to 5 PM&quot;</li>
-                                            <li>• &quot;Remove the Spa World activity&quot;</li>
+                                        Hi! I can help you manage your Japan trip. Try asking me to:
+                                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                            <li>• &quot;Add breakfast at Yuyu cafe tomorrow morning&quot;</li>
+                                            <li>• &quot;What&apos;s the plan for Day 3?&quot;</li>
+                                            <li>• &quot;Change dinner to 8pm&quot;</li>
                                         </ul>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Chat Messages */}
-                            {messages.map((m) => {
-                                const toolParts = getToolParts(m.parts as Array<{ type: string } & Record<string, unknown>>);
-                                const textContent = getTextContent(m.parts as Array<{ type: string } & Record<string, unknown>>);
-                                
-                                return (
-                                    <div key={m.id} className={cn("flex gap-3", m.role === 'user' ? "flex-row-reverse" : "")}>
-                                        <Avatar className={cn("h-8 w-8 border shrink-0", m.role === 'user' ? "bg-background" : "bg-primary/10")}>
-                                            <AvatarFallback>{m.role === 'user' ? <UserIcon /> : <Bot className="h-4 w-4" />}</AvatarFallback>
-                                        </Avatar>
-                                        <div className={cn("space-y-2 max-w-[85%]", m.role === 'user' ? "items-end flex flex-col" : "")}>
-                                            <p className="text-xs font-semibold text-muted-foreground">{m.role === 'user' ? 'You' : 'Travel Agent'}</p>
-                                            
-                                            {/* Tool Invocations */}
-                                            {toolParts.length > 0 && (
-                                                <div className="space-y-2">
-                                                    {toolParts.map((tool) => (
-                                                        <ToolInvocationCard key={tool.toolCallId} tool={tool} />
-                                                    ))}
-                                                </div>
-                                            )}
-                                            
-                                            {/* Text Content */}
-                                            {textContent && (
-                                                <div className={cn(
-                                                    "p-3 rounded-lg text-sm", 
-                                                    m.role === 'user' 
-                                                        ? "bg-primary text-primary-foreground rounded-tr-none" 
-                                                        : "bg-muted/50 rounded-tl-none"
-                                                )}>
-                                                    {textContent}
-                                                </div>
-                                            )}
+                            {messages.map((m) => (
+                                <div key={m.id} className={cn("flex gap-3", m.role === 'user' ? "flex-row-reverse" : "")}>
+                                    <Avatar className={cn("h-8 w-8 border shrink-0", m.role === 'user' ? "bg-background" : "bg-primary/10")}>
+                                        <AvatarFallback>{m.role === 'user' ? <UserIcon /> : <Bot className="h-4 w-4" />}</AvatarFallback>
+                                    </Avatar>
+                                    <div className={cn("space-y-1 max-w-[85%] min-w-0", m.role === 'user' ? "items-end flex flex-col" : "")}>
+                                        <p className="text-xs font-semibold text-muted-foreground">{m.role === 'user' ? 'You' : 'Travel Agent'}</p>
+                                        <div className={cn("p-3 rounded-lg text-sm whitespace-pre-wrap", m.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-muted/50 rounded-tl-none")}>
+                                            {m.content || (isLoading && m.role === 'assistant' ? '...' : '')}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                </div>
+                            ))}
 
                             {/* Loading indicator */}
-                            {isLoading && (
+                            {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
                                 <div className="flex gap-3">
                                     <Avatar className="h-8 w-8 border bg-primary/10">
                                         <AvatarFallback><Bot className="h-4 w-4" /></AvatarFallback>
@@ -206,6 +220,47 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Error display */}
+                            {error && (
+                                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
+                                    Error: {error.message}
+                                </div>
+                            )}
+
+                            {/* Pending Proposals */}
+                            {pendingProposals.length > 0 && (
+                                <div className="space-y-3 mt-4">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                                        <Sparkles className="h-3 w-3" />
+                                        Suggested Actions ({pendingProposals.length})
+                                    </p>
+                                    {pendingProposals.map((proposal) => (
+                                        <ProposalCard
+                                            key={proposal.id}
+                                            proposal={proposal}
+                                            onApprove={() => approveProposal(proposal.id)}
+                                            onReject={() => rejectProposal(proposal.id)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Recently Applied */}
+                            {recentApproved.length > 0 && (
+                                <div className="space-y-2 mt-4">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recently Applied</p>
+                                    {recentApproved.map((proposal) => (
+                                        <div
+                                            key={proposal.id}
+                                            className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 flex items-center gap-2 text-sm text-green-700 dark:text-green-400"
+                                        >
+                                            <Check className="h-4 w-4" />
+                                            <span className="truncate">{proposal.title}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </ScrollArea>
 
@@ -213,10 +268,10 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                     <div className="p-4 border-t bg-background">
                         <form onSubmit={handleSubmit} className="relative">
                             <input
-                                value={input}
-                                onChange={handleInputChange}
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
                                 className="w-full bg-muted/30 border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary pr-10"
-                                placeholder="Ask anything or give a command..."
+                                placeholder="Ask anything or add items..."
                                 disabled={isLoading}
                             />
                             <Button 
@@ -224,7 +279,7 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                                 size="icon" 
                                 className="absolute right-1 top-1 h-7 w-7 rounded-full shadow-none" 
                                 variant="ghost"
-                                disabled={isLoading || !input.trim()}
+                                disabled={isLoading || !inputValue.trim()}
                             >
                                 {isLoading ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -237,7 +292,7 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                             <StatusPill icon={Globe} label="Web" connected />
                             <StatusPill icon={Plane} label="Flights" connected />
                             <StatusPill icon={Hotel} label="Hotels" connected />
-                            <StatusPill icon={Calendar} label="Calendar" />
+                            <StatusPill icon={Calendar} label="Calendar" connected={!!tripId} />
                             <StatusPill icon={MapPin} label="Maps" />
                         </div>
                     </div>
@@ -246,7 +301,7 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                 <TabsContent value="activity" className="flex-1 p-0 m-0">
                     <ScrollArea className="h-full">
                         <div className="p-4 space-y-4">
-                            {activities.map((activity) => (
+                            {displayActivities.map((activity) => (
                                 <ActivityItem
                                     key={activity.id}
                                     user={activity.user}
@@ -255,9 +310,9 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
                                     time={activity.time}
                                 />
                             ))}
-                            {activities.length === 0 && (
-                                <div className="text-center text-muted-foreground text-sm py-8">
-                                    No activity yet
+                            {displayActivities.length === 0 && (
+                                <div className="text-center text-sm text-muted-foreground py-8">
+                                    No activity yet. Start chatting with the AI to make changes!
                                 </div>
                             )}
                         </div>
@@ -266,105 +321,6 @@ export function RightPanel({ isOpen, toggleOpen, className }: RightPanelProps) {
             </Tabs>
         </aside>
     );
-}
-
-function ToolInvocationCard({ tool }: { tool: ToolPart }) {
-    // Extract tool name from the type (e.g., 'tool-addItineraryItem' -> 'addItineraryItem')
-    const toolName = tool.type.startsWith('tool-') 
-        ? tool.type.replace('tool-', '') 
-        : (tool as { toolName?: string }).toolName || 'unknown';
-
-    const getToolLabel = () => {
-        switch (toolName) {
-            case 'addItineraryItem':
-                return 'Adding to itinerary';
-            case 'updateItineraryItem':
-                return 'Updating item';
-            case 'deleteItineraryItem':
-                return 'Removing item';
-            case 'getItineraryItems':
-                return 'Checking itinerary';
-            default:
-                return toolName;
-        }
-    };
-
-    // Show loading state for streaming or available input (before output)
-    if (tool.state === 'input-streaming' || tool.state === 'input-available') {
-        return (
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                <span className="text-blue-700 dark:text-blue-300">{getToolLabel()}...</span>
-            </div>
-        );
-    }
-
-    // Show error state
-    if (tool.state === 'error') {
-        return (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm">
-                <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
-                <span className="text-red-700 dark:text-red-300">
-                    {tool.errorText || 'Something went wrong'}
-                </span>
-            </div>
-        );
-    }
-
-    // Show result state
-    if (tool.state === 'output-available' && tool.output) {
-        if (tool.output.success) {
-            return (
-                <div className="flex items-start gap-2 px-3 py-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg text-sm">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
-                    <div className="flex-1">
-                        <span className="text-green-700 dark:text-green-300 font-medium">
-                            {tool.output.message || 'Done!'}
-                        </span>
-                        {tool.output.item && (
-                            <div className="mt-1 text-xs text-green-600 dark:text-green-400">
-                                {(tool.output.item as { title?: string }).title && (
-                                    <span>• {(tool.output.item as { title: string }).title}</span>
-                                )}
-                            </div>
-                        )}
-                        {tool.output.day && (
-                            <div className="mt-1 text-xs text-green-600 dark:text-green-400 space-y-0.5">
-                                <div className="font-medium">
-                                    {(tool.output.day as { label?: string }).label} - {(tool.output.day as { location?: string }).location}
-                                </div>
-                                {(tool.output.day as { items?: Array<{ time: string; title: string; status: string }> }).items?.slice(0, 5).map((item, i) => (
-                                    <div key={i} className="flex items-center gap-1">
-                                        <span className="font-mono">{item.time}</span>
-                                        <span>{item.title}</span>
-                                        <Badge variant="outline" className="text-[8px] h-4 px-1">
-                                            {item.status}
-                                        </Badge>
-                                    </div>
-                                ))}
-                                {((tool.output.day as { items?: Array<unknown> }).items?.length || 0) > 5 && (
-                                    <div className="text-muted-foreground">
-                                        +{((tool.output.day as { items?: Array<unknown> }).items?.length || 0) - 5} more items
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        } else {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm">
-                    <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
-                    <span className="text-red-700 dark:text-red-300">
-                        {tool.output.error || 'Something went wrong'}
-                    </span>
-                </div>
-            );
-        }
-    }
-
-    return null;
 }
 
 function UserIcon() {
@@ -387,6 +343,89 @@ function UserIcon() {
     )
 }
 
+function ProposalCard({
+    proposal,
+    onApprove,
+    onReject
+}: {
+    proposal: Proposal;
+    onApprove: () => void;
+    onReject: () => void;
+}) {
+    const [isApproving, setIsApproving] = React.useState(false);
+
+    const handleApprove = () => {
+        setIsApproving(true);
+        setTimeout(() => {
+            onApprove();
+        }, 300);
+    };
+
+    const typeIcon = {
+        itinerary: Calendar,
+        place: MapPin,
+        booking: Hotel,
+        flight: Plane,
+    }[proposal.type] || Sparkles;
+
+    const TypeIcon = typeIcon;
+
+    return (
+        <Card className={cn(
+            "shadow-sm border-muted-foreground/20 transition-all duration-300",
+            isApproving && "scale-95 opacity-50"
+        )}>
+            <CardHeader className="p-3 pb-2">
+                <div className="flex justify-between items-start gap-2">
+                    <div className="flex items-start gap-2">
+                        <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center mt-0.5">
+                            <TypeIcon className="h-3 w-3 text-primary" />
+                        </div>
+                        <CardTitle className="text-sm font-medium leading-tight">{proposal.title}</CardTitle>
+                    </div>
+                    <Badge
+                        variant="secondary"
+                        className={cn(
+                            "text-[10px] h-5 shrink-0",
+                            proposal.confidence >= 90
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : proposal.confidence >= 80
+                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                    : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        )}
+                    >
+                        {proposal.confidence}%
+                    </Badge>
+                </div>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 pb-2">
+                <p className="text-xs text-muted-foreground">{proposal.description}</p>
+            </CardContent>
+            <CardFooter className="p-3 pt-2 flex gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs flex-1"
+                    onClick={onReject}
+                    disabled={isApproving}
+                >
+                    <X className="h-3 w-3 mr-1" />
+                    Reject
+                </Button>
+                <Button
+                    size="sm"
+                    className="h-7 text-xs flex-1"
+                    onClick={handleApprove}
+                    disabled={isApproving}
+                >
+                    <Check className="h-3 w-3 mr-1" />
+                    Approve
+                </Button>
+            </CardFooter>
+        </Card>
+    );
+}
+
 function StatusPill({ icon: Icon, label, connected }: { icon: React.ComponentType<{ className?: string }>; label: string; connected?: boolean }) {
     return (
         <div
@@ -405,19 +444,14 @@ function StatusPill({ icon: Icon, label, connected }: { icon: React.ComponentTyp
 }
 
 function ActivityItem({ user, action, target, time }: { user: string; action: string; target: string; time: string }) {
-    const isAI = user === 'AI Agent';
     return (
         <div className="flex gap-3 text-sm">
-            <Avatar className={cn("h-8 w-8 mt-1", isAI && "bg-primary/10")}>
-                <AvatarFallback>
-                    {isAI ? <Bot className="h-4 w-4" /> : user[0]}
-                </AvatarFallback>
+            <Avatar className="h-8 w-8 mt-1">
+                <AvatarFallback>{user[0]}</AvatarFallback>
             </Avatar>
             <div>
                 <p>
-                    <span className={cn("font-semibold", isAI && "text-primary")}>{user}</span>{' '}
-                    {action}{' '}
-                    <span className="font-medium text-primary">{target}</span>
+                    <span className="font-semibold">{user}</span> {action} <span className="font-medium text-primary">{target}</span>
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">{time}</p>
             </div>

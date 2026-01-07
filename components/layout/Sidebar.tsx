@@ -30,7 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useEditModal, useUIState } from "@/lib/supabase-store";
+import { useEditModal, useUIState } from "@/lib/store";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     isCollapsed: boolean;

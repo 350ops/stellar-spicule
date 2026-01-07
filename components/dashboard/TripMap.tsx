@@ -211,7 +211,7 @@ export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = t
             const dayB = b.day ? parseInt(b.day.replace(/\D/g, '')) : 999;
             if (dayA !== dayB) return dayA - dayB;
             // Secondary sort by id for stable ordering within same day
-            return a.id - b.id;
+            return String(a.id).localeCompare(String(b.id));
         });
     }, [filteredPins]);
 

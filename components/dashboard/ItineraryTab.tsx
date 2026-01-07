@@ -12,121 +12,157 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Clock, Edit, GripVertical, MapPin, MoreHorizontal, FileText, MessageSquare, Link2, Plus, Trash2 } from "lucide-react";
-import { useItinerary, useUIState, useEditModal, type ItineraryItem } from "@/lib/supabase-store";
+import { Clock, Edit, GripVertical, MapPin, MoreHorizontal, FileText, MessageSquare, Link2, Plus, Trash2, Loader2 } from "lucide-react";
+import { useItinerary, useUIState, useEditModal, type ItineraryItem } from "@/lib/store";
+import { useTripContext } from "@/lib/trip-context";
 import { Separator } from "@/components/ui/separator";
 import { EditItemModal } from "./EditItemModal";
 
 export function ItineraryTab() {
-    const { itinerary, deleteItineraryItem } = useItinerary();
+    // Get data from both sources
+    const localStore = useItinerary();
     const { selectedItineraryItem, setSelectedItineraryItem } = useUIState();
     const { openEditModal } = useEditModal();
+    
+    // Try to use Supabase data if available
+    const tripContext = useTripContext();
+    const { itinerary: realtimeItinerary, itineraryLoading, tripId, deleteItineraryItem: deleteRealtimeItem } = tripContext;
+    
+    // Use realtime data if we have a tripId and data, otherwise fall back to local store
+    const useRealtime = tripId && realtimeItinerary.length > 0;
+    const itinerary = useRealtime ? realtimeItinerary : localStore.itinerary;
+    
+    const handleDelete = async (itemId: string | number, title: string) => {
+        if (!confirm(`Delete "${title}"?`)) return;
+        
+        if (useRealtime && typeof itemId === 'string') {
+            await deleteRealtimeItem(itemId);
+        } else {
+            localStore.deleteItineraryItem(itemId as number);
+        }
+    };
+
+    if (itineraryLoading && tripId) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
 
     return (
         <div className="flex gap-6 pb-10 relative">
             <div className="flex-1 space-y-8">
-                {itinerary.map((day) => (
-                    <div key={day.day} className="relative pl-8 border-l-2 border-muted">
-                        {/* Day Marker */}
-                        <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-primary ring-4 ring-background" />
+                {itinerary.map((day, dayIdx) => {
+                    // Handle both formats (realtime has 'id', local has numeric index)
+                    const dayId = 'id' in day ? day.id : dayIdx;
+                    
+                    return (
+                        <div key={dayId} className="relative pl-8 border-l-2 border-muted group">
+                            {/* Day Marker */}
+                            <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-primary ring-4 ring-background" />
 
-                        <div className="mb-4">
-                            <h3 className="text-lg font-bold">{day.day} <span className="text-muted-foreground font-normal text-base ml-2">{day.date}</span></h3>
-                            <p className="text-sm text-muted-foreground">{day.location}</p>
-                        </div>
+                            <div className="mb-4">
+                                <h3 className="text-lg font-bold">{day.day} <span className="text-muted-foreground font-normal text-base ml-2">{day.date}</span></h3>
+                                <p className="text-sm text-muted-foreground">{day.location}</p>
+                            </div>
 
-                        <div className="space-y-3">
-                            {day.items.map((item) => {
-                                const dayIndex = itinerary.findIndex(d => d.day === day.day);
-                                return (
-                                    <div
-                                        key={item.id}
-                                        onClick={() => setSelectedItineraryItem({ ...item, day: day.day, date: day.date })}
-                                        className="group relative flex gap-4 bg-card rounded-lg border p-3 shadow-sm hover:shadow-md hover:border-primary/50 cursor-pointer transition-all"
-                                    >
-                                        <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-muted-foreground cursor-grab active:cursor-grabbing">
-                                            <GripVertical className="h-4 w-4" />
-                                        </div>
+                            <div className="space-y-3">
+                                {day.items.map((item) => {
+                                    const itemForSelection = {
+                                        ...item,
+                                        id: typeof item.id === 'string' ? parseInt(item.id, 16) % 1000000 : item.id,
+                                        day: day.day,
+                                        date: day.date,
+                                    } as ItineraryItem;
+                                    
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            onClick={() => setSelectedItineraryItem(itemForSelection)}
+                                            className="group/item relative flex gap-4 bg-card rounded-lg border p-3 shadow-sm hover:shadow-md hover:border-primary/50 cursor-pointer transition-all"
+                                        >
+                                            <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 text-muted-foreground cursor-grab active:cursor-grabbing">
+                                                <GripVertical className="h-4 w-4" />
+                                            </div>
 
-                                        <div className="pl-6 flex-1">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <div className="flex items-center gap-2">
-                                                    <Badge variant="outline" className="font-mono text-xs">{item.time}</Badge>
-                                                    <h4 className="font-semibold text-sm">{item.title}</h4>
+                                            <div className="pl-6 flex-1">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant="outline" className="font-mono text-xs">{item.time}</Badge>
+                                                        <h4 className="font-semibold text-sm">{item.title}</h4>
+                                                    </div>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6 -mr-2" onClick={(e) => e.stopPropagation()}>
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                                            <DropdownMenuItem onClick={() => openEditModal("edit", dayIdx, itemForSelection)}>
+                                                                <Edit className="h-4 w-4 mr-2" />
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                className="text-destructive focus:text-destructive"
+                                                                onClick={() => handleDelete(item.id, item.title)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-6 w-6 -mr-2" onClick={(e) => e.stopPropagation()}>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                                                        <DropdownMenuItem onClick={() => openEditModal("edit", dayIndex, { ...item, day: day.day, date: day.date })}>
-                                                            <Edit className="h-4 w-4 mr-2" />
-                                                            Edit
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem
-                                                            className="text-destructive focus:text-destructive"
-                                                            onClick={() => {
-                                                                if (confirm(`Delete "${item.title}"?`)) {
-                                                                    deleteItineraryItem(item.id);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-4 w-4 mr-2" />
-                                                            Delete
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+
+                                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                                    <div className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</div>
+                                                    {item.duration && <div className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.duration}</div>}
+                                                </div>
                                             </div>
 
-                                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                                <div className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</div>
-                                                {item.duration && <div className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.duration}</div>}
+                                            <div className="flex flex-col justify-between items-end">
+                                                <StatusChip status={item.status} />
+                                                <div className="flex -space-x-2">
+                                                    {item.assignees.map((a: string, i: number) => (
+                                                        <Avatar key={i} className="h-5 w-5 border-2 border-background">
+                                                            <AvatarFallback className="text-[9px] bg-primary/10 text-primary">{a}</AvatarFallback>
+                                                        </Avatar>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-
-                                        <div className="flex flex-col justify-between items-end">
-                                            <StatusChip status={item.status} />
-                                            <div className="flex -space-x-2">
-                                                {item.assignees.map((a: string, i: number) => (
-                                                    <Avatar key={i} className="h-5 w-5 border-2 border-background">
-                                                        <AvatarFallback className="text-[9px] bg-primary/10 text-primary">{a}</AvatarFallback>
-                                                    </Avatar>
-                                                ))}
-                                            </div>
-                                        </div>
+                                    );
+                                })}
+                                {day.empty && (
+                                    <div
+                                        onClick={() => openEditModal("create", dayIdx)}
+                                        className="h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground text-sm hover:bg-muted/50 hover:border-primary/50 transition cursor-pointer"
+                                    >
+                                        <Plus className="h-5 w-5 mb-1" />
+                                        <span>Add first item</span>
                                     </div>
-                                );
-                            })}
-                            {day.empty && (
-                                <div
-                                    onClick={() => {
-                                        const dayIndex = itinerary.findIndex(d => d.day === day.day);
-                                        openEditModal("create", dayIndex);
-                                    }}
-                                    className="h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-muted-foreground text-sm hover:bg-muted/50 hover:border-primary/50 transition cursor-pointer"
+                                )}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full text-muted-foreground text-xs opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity h-8"
+                                    onClick={() => openEditModal("create", dayIdx)}
                                 >
-                                    <Plus className="h-5 w-5 mb-1" />
-                                    <span>Add first item</span>
-                                </div>
-                            )}
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full text-muted-foreground text-xs opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity h-8"
-                                onClick={() => {
-                                    const dayIndex = itinerary.findIndex(d => d.day === day.day);
-                                    openEditModal("create", dayIndex);
-                                }}
-                            >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add item
-                            </Button>
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add item
+                                </Button>
+                            </div>
                         </div>
+                    );
+                })}
+                
+                {itinerary.length === 0 && !itineraryLoading && (
+                    <div className="text-center py-12 text-muted-foreground">
+                        <p className="text-lg font-medium mb-2">No itinerary yet</p>
+                        <p className="text-sm">Start by asking the AI to add items, or connect to Supabase to load your trip data.</p>
                     </div>
-                ))}
+                )}
             </div>
 
             {/* Edit Modal */}
@@ -162,10 +198,8 @@ export function ItineraryTab() {
                                             size="sm"
                                             className="text-destructive hover:text-destructive"
                                             onClick={() => {
-                                                if (confirm(`Delete "${selectedItineraryItem.title}"?`)) {
-                                                    deleteItineraryItem(selectedItineraryItem.id);
-                                                    setSelectedItineraryItem(null);
-                                                }
+                                                handleDelete(selectedItineraryItem.id, selectedItineraryItem.title);
+                                                setSelectedItineraryItem(null);
                                             }}
                                         >
                                             <Trash2 className="h-4 w-4" />

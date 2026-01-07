@@ -5,18 +5,20 @@ import { Header } from "./Header";
 import { RightPanel } from "./RightPanel";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
-import { useUIState } from "@/lib/supabase-store";
+import { useUIState } from "@/lib/store";
 import { Loader2, Plane } from "lucide-react";
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
     const {
-        isLoading,
-        error,
         isSidebarCollapsed,
         toggleSidebar,
         isRightPanelOpen,
         toggleRightPanel
     } = useUIState();
+
+    // Note: Loading and error states removed since we're using local store
+    const isLoading = false;
+    const error: string | null = null;
 
     // Show loading state while fetching data from Supabase
     if (isLoading) {
