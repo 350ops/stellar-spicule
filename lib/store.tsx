@@ -84,7 +84,7 @@ export interface Proposal {
     confidence: number;
     status: "pending" | "approved" | "rejected";
     type: "itinerary" | "place" | "booking" | "flight";
-    data?: any;
+    data?: Record<string, unknown>;
 }
 
 export interface ActivityItem {
