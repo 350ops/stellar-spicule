@@ -484,3 +484,355 @@ export function subscribeToMapPinChanges(
     };
 }
 
+// ============================================
+// Notes Operations
+// ============================================
+export interface DbNote {
+    id: string;
+    trip_id: string;
+    title: string;
+    content: string;
+    category: string;
+    color: string | null;
+    icon: string | null;
+    is_favorite: boolean;
+    created_by: string | null;
+    last_edited_by: string | null;
+    note_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getNotes(tripId: string) {
+    const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('note_order', { ascending: true });
+
+    if (error) throw error;
+    return data as DbNote[];
+}
+
+export async function createNote(note: Omit<DbNote, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+        .from('notes')
+        .insert(note)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbNote;
+}
+
+export async function updateNote(noteId: string, updates: Partial<DbNote>) {
+    const { data, error } = await supabase
+        .from('notes')
+        .update(updates)
+        .eq('id', noteId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbNote;
+}
+
+export async function deleteNote(noteId: string) {
+    const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', noteId);
+
+    if (error) throw error;
+}
+
+// ============================================
+// Trip Settings Operations
+// ============================================
+export interface DbTripSettings {
+    id: string;
+    trip_id: string;
+    timezone: string;
+    currency: string;
+    date_format: string;
+    time_format: string;
+    default_assignees: string[];
+    collaborators: any;
+    preferences: any;
+    notifications: any;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getTripSettings(tripId: string) {
+    const { data, error } = await supabase
+        .from('trip_settings')
+        .select('*')
+        .eq('trip_id', tripId)
+        .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data as DbTripSettings | null;
+}
+
+export async function createTripSettings(settings: Omit<DbTripSettings, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+        .from('trip_settings')
+        .insert(settings)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbTripSettings;
+}
+
+export async function updateTripSettings(tripId: string, updates: Partial<DbTripSettings>) {
+    const { data, error } = await supabase
+        .from('trip_settings')
+        .update(updates)
+        .eq('trip_id', tripId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbTripSettings;
+}
+
+// ============================================
+// Expenses Operations
+// ============================================
+export interface DbExpense {
+    id: string;
+    trip_id: string;
+    category: string;
+    description: string;
+    amount: number;
+    currency: string;
+    paid_by: string;
+    split_with: string[];
+    date: string;
+    payment_method: string | null;
+    receipt_url: string | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export async function getExpenses(tripId: string) {
+    const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data as DbExpense[];
+}
+
+export async function createExpense(expense: Omit<DbExpense, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+        .from('expenses')
+        .insert(expense)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbExpense;
+}
+
+export async function updateExpense(expenseId: string, updates: Partial<DbExpense>) {
+    const { data, error } = await supabase
+        .from('expenses')
+        .update(updates)
+        .eq('id', expenseId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbExpense;
+}
+
+export async function deleteExpense(expenseId: string) {
+    const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId);
+
+    if (error) throw error;
+}
+
+// ============================================
+// Files Operations
+// ============================================
+export interface DbFile {
+    id: string;
+    trip_id: string;
+    name: string;
+    file_type: string;
+    file_size: number | null;
+    storage_path: string;
+    url: string;
+    category: string;
+    uploaded_by: string | null;
+    description: string | null;
+    created_at: string;
+}
+
+export async function getFiles(tripId: string) {
+    const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data as DbFile[];
+}
+
+export async function createFile(file: Omit<DbFile, 'id' | 'created_at'>) {
+    const { data, error } = await supabase
+        .from('files')
+        .insert(file)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as DbFile;
+}
+
+export async function deleteFile(fileId: string) {
+    const { error } = await supabase
+        .from('files')
+        .delete()
+        .eq('id', fileId);
+
+    if (error) throw error;
+}
+
+// ============================================
+// Real-time Subscriptions for New Features
+// ============================================
+export function subscribeToNotesChanges(
+    tripId: string,
+    onInsert: (note: DbNote) => void,
+    onUpdate: (note: DbNote) => void,
+    onDelete: (noteId: string) => void
+) {
+    const channel = supabase
+        .channel(`notes-${tripId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'notes',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onInsert(payload.new as DbNote)
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'notes',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onUpdate(payload.new as DbNote)
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'notes',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onDelete(payload.old.id as string)
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+}
+
+export function subscribeToExpensesChanges(
+    tripId: string,
+    onInsert: (expense: DbExpense) => void,
+    onUpdate: (expense: DbExpense) => void,
+    onDelete: (expenseId: string) => void
+) {
+    const channel = supabase
+        .channel(`expenses-${tripId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'expenses',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onInsert(payload.new as DbExpense)
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'expenses',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onUpdate(payload.new as DbExpense)
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'expenses',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onDelete(payload.old.id as string)
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+}
+
+export function subscribeToFilesChanges(
+    tripId: string,
+    onInsert: (file: DbFile) => void,
+    onDelete: (fileId: string) => void
+) {
+    const channel = supabase
+        .channel(`files-${tripId}`)
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'files',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onInsert(payload.new as DbFile)
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'files',
+                filter: `trip_id=eq.${tripId}`,
+            },
+            (payload) => onDelete(payload.old.id as string)
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+}
+

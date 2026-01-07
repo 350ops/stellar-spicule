@@ -131,3 +131,111 @@ CREATE TRIGGER update_itinerary_items_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Notes table
+CREATE TABLE IF NOT EXISTS notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    content TEXT DEFAULT '',
+    category TEXT DEFAULT 'general',
+    color TEXT,
+    icon TEXT,
+    is_favorite BOOLEAN DEFAULT false,
+    created_by TEXT,
+    last_edited_by TEXT,
+    note_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trip settings table
+CREATE TABLE IF NOT EXISTS trip_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE UNIQUE,
+    timezone TEXT DEFAULT 'UTC',
+    currency TEXT DEFAULT 'USD',
+    date_format TEXT DEFAULT 'MM/DD/YYYY',
+    time_format TEXT DEFAULT '12h',
+    default_assignees TEXT[] DEFAULT '{}',
+    collaborators JSONB DEFAULT '[]',
+    preferences JSONB DEFAULT '{}',
+    notifications JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Expenses table
+CREATE TABLE IF NOT EXISTS expenses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    paid_by TEXT NOT NULL,
+    split_with TEXT[] DEFAULT '{}',
+    date DATE NOT NULL,
+    payment_method TEXT,
+    receipt_url TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Files table
+CREATE TABLE IF NOT EXISTS files (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size INTEGER,
+    storage_path TEXT NOT NULL,
+    url TEXT NOT NULL,
+    category TEXT DEFAULT 'general',
+    uploaded_by TEXT,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_notes_trip_id ON notes(trip_id);
+CREATE INDEX IF NOT EXISTS idx_notes_order ON notes(trip_id, note_order);
+CREATE INDEX IF NOT EXISTS idx_trip_settings_trip_id ON trip_settings(trip_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_trip_id ON expenses(trip_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(trip_id, date);
+CREATE INDEX IF NOT EXISTS idx_files_trip_id ON files(trip_id);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trip_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE files ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for public access (for demo purposes)
+CREATE POLICY "Allow all access to notes" ON notes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to trip_settings" ON trip_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to expenses" ON expenses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to files" ON files FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable realtime for new tables
+ALTER PUBLICATION supabase_realtime ADD TABLE notes;
+ALTER PUBLICATION supabase_realtime ADD TABLE trip_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE expenses;
+ALTER PUBLICATION supabase_realtime ADD TABLE files;
+
+-- Triggers for updated_at on new tables
+CREATE TRIGGER update_notes_updated_at
+    BEFORE UPDATE ON notes
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_trip_settings_updated_at
+    BEFORE UPDATE ON trip_settings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_expenses_updated_at
+    BEFORE UPDATE ON expenses
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+

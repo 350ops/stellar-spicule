@@ -220,6 +220,188 @@ export interface Database {
                     created_at?: string
                 }
             }
+            notes: {
+                Row: {
+                    id: string
+                    trip_id: string
+                    title: string
+                    content: string
+                    category: string
+                    color: string | null
+                    icon: string | null
+                    is_favorite: boolean
+                    created_by: string | null
+                    last_edited_by: string | null
+                    note_order: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    trip_id: string
+                    title: string
+                    content?: string
+                    category?: string
+                    color?: string | null
+                    icon?: string | null
+                    is_favorite?: boolean
+                    created_by?: string | null
+                    last_edited_by?: string | null
+                    note_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    trip_id?: string
+                    title?: string
+                    content?: string
+                    category?: string
+                    color?: string | null
+                    icon?: string | null
+                    is_favorite?: boolean
+                    created_by?: string | null
+                    last_edited_by?: string | null
+                    note_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            trip_settings: {
+                Row: {
+                    id: string
+                    trip_id: string
+                    timezone: string
+                    currency: string
+                    date_format: string
+                    time_format: string
+                    default_assignees: string[]
+                    collaborators: Json
+                    preferences: Json
+                    notifications: Json
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    trip_id: string
+                    timezone?: string
+                    currency?: string
+                    date_format?: string
+                    time_format?: string
+                    default_assignees?: string[]
+                    collaborators?: Json
+                    preferences?: Json
+                    notifications?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    trip_id?: string
+                    timezone?: string
+                    currency?: string
+                    date_format?: string
+                    time_format?: string
+                    default_assignees?: string[]
+                    collaborators?: Json
+                    preferences?: Json
+                    notifications?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            expenses: {
+                Row: {
+                    id: string
+                    trip_id: string
+                    category: string
+                    description: string
+                    amount: number
+                    currency: string
+                    paid_by: string
+                    split_with: string[]
+                    date: string
+                    payment_method: string | null
+                    receipt_url: string | null
+                    notes: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    trip_id: string
+                    category: string
+                    description: string
+                    amount: number
+                    currency?: string
+                    paid_by: string
+                    split_with?: string[]
+                    date: string
+                    payment_method?: string | null
+                    receipt_url?: string | null
+                    notes?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    trip_id?: string
+                    category?: string
+                    description?: string
+                    amount?: number
+                    currency?: string
+                    paid_by?: string
+                    split_with?: string[]
+                    date?: string
+                    payment_method?: string | null
+                    receipt_url?: string | null
+                    notes?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            files: {
+                Row: {
+                    id: string
+                    trip_id: string
+                    name: string
+                    file_type: string
+                    file_size: number | null
+                    storage_path: string
+                    url: string
+                    category: string
+                    uploaded_by: string | null
+                    description: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    trip_id: string
+                    name: string
+                    file_type: string
+                    file_size?: number | null
+                    storage_path: string
+                    url: string
+                    category?: string
+                    uploaded_by?: string | null
+                    description?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    trip_id?: string
+                    name?: string
+                    file_type?: string
+                    file_size?: number | null
+                    storage_path?: string
+                    url?: string
+                    category?: string
+                    uploaded_by?: string | null
+                    description?: string | null
+                    created_at?: string
+                }
+            }
         }
         Views: {
             [_ in never]: never

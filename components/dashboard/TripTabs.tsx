@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OverviewTab } from "./OverviewTab";
 import { ItineraryTab } from "./ItineraryTab";
 import { BudgetTab, CalendarTab, FilesTab, MapTab, NotesTab } from "./Placeholders";
+import { SettingsTab } from "./SettingsTab";
 import { useUIState } from "@/lib/store";
 
 export function TripTabs() {
@@ -21,6 +22,7 @@ export function TripTabs() {
                     <TabsTrigger value="notes">Notes</TabsTrigger>
                     <TabsTrigger value="budget">Budget</TabsTrigger>
                     <TabsTrigger value="files">Files</TabsTrigger>
+                    <TabsTrigger value="settings">Settings</TabsTrigger>
                 </TabsList>
             </div>
 
@@ -50,6 +52,10 @@ export function TripTabs() {
 
             <TabsContent value="files" className="animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
                 <FilesTab />
+            </TabsContent>
+
+            <TabsContent value="settings" className="animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <SettingsTab />
             </TabsContent>
         </Tabs>
     );
