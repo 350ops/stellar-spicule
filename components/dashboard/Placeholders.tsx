@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMapPins } from "@/lib/store";
+import { useMapPins, usePlaces } from "@/lib/supabase-store";
 import { Loader2 } from "lucide-react";
 
 // Dynamically import TripMap to avoid SSR issues with Leaflet

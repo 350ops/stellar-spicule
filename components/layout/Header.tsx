@@ -12,7 +12,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUIState, useWorkspace } from "@/lib/store";
+import { useUIState, useWorkspace } from "@/lib/supabase-store";
 import { cn } from "@/lib/utils";
 
 export function Header() {

@@ -13,7 +13,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Clock, Edit, GripVertical, MapPin, MoreHorizontal, FileText, MessageSquare, Link2, Plus, Trash2 } from "lucide-react";
-import { useItinerary, useUIState, useEditModal, type ItineraryItem } from "@/lib/store";
+import { useItinerary, useUIState, useEditModal, type ItineraryItem } from "@/lib/supabase-store";
 import { Separator } from "@/components/ui/separator";
 import { EditItemModal } from "./EditItemModal";
 

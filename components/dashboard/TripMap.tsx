@@ -89,7 +89,7 @@ const markerColors: Record<string, string> = {
 };
 
 export interface MapPin {
-    id: number;
+    id: string;
     name: string;
     location: string;
     lat: number;
@@ -101,9 +101,9 @@ export interface MapPin {
 
 interface TripMapProps {
     pins: MapPin[];
-    onAddPin?: (pin: Omit<MapPin, "id">) => void;
-    onUpdatePin?: (id: number, updates: Partial<MapPin>) => void;
-    onDeletePin?: (id: number) => void;
+    onAddPin?: (pin: Omit<MapPin, "id">) => void | Promise<void>;
+    onUpdatePin?: (id: string, updates: Partial<MapPin>) => void | Promise<void>;
+    onDeletePin?: (id: string) => void | Promise<void>;
     editable?: boolean;
 }
 
@@ -167,7 +167,7 @@ export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = t
         notes: "",
     });
     const [editingPin, setEditingPin] = React.useState<MapPin | null>(null);
-    const [highlightedPinId, setHighlightedPinId] = React.useState<number | null>(null);
+    const [highlightedPinId, setHighlightedPinId] = React.useState<string | null>(null);
     
     // Filter state
     const [showRoute, setShowRoute] = React.useState(true);
@@ -261,7 +261,7 @@ export function TripMap({ pins, onAddPin, onUpdatePin, onDeletePin, editable = t
         }
     };
 
-    const handleDeletePin = (id: number) => {
+    const handleDeletePin = (id: string) => {
         if (onDeletePin) {
             onDeletePin(id);
         }

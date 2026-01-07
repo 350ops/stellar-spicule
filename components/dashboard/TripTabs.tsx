@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OverviewTab } from "./OverviewTab";
 import { ItineraryTab } from "./ItineraryTab";
 import { BudgetTab, CalendarTab, FilesTab, MapTab, NotesTab } from "./Placeholders";
-import { useUIState } from "@/lib/store";
+import { useUIState } from "@/lib/supabase-store";
 
 export function TripTabs() {
     const { activeTab, setActiveTab } = useUIState();

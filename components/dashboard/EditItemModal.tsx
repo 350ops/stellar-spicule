@@ -50,7 +50,7 @@ import {
     type ItineraryItem,
     type ItemType,
     type ItemStatus,
-} from "@/lib/store";
+} from "@/lib/supabase-store";
 import { cn } from "@/lib/utils";
 
 // Icon mapping

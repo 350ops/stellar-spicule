@@ -30,7 +30,7 @@ import {
     CommandSeparator,
     CommandShortcut,
 } from "@/components/ui/command";
-import { useUIState, useWorkspace } from "@/lib/store";
+import { useUIState, useWorkspace } from "@/lib/supabase-store";
 
 export function CommandPalette() {
     const { isCommandPaletteOpen, setCommandPaletteOpen, setActiveTab, setRightPanelOpen, isRightPanelOpen } = useUIState();
